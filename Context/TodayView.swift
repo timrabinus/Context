@@ -47,9 +47,11 @@ struct TodayView: View {
             }
             .padding(.horizontal, 40)
             
-
-            
             Spacer()
+            
+            // Calendar line
+            CalendarLineView()
+                .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
@@ -550,6 +552,67 @@ struct ClockView: View {
             timer?.invalidate()
             timer = nil
         }
+    }
+}
+
+struct CalendarLineView: View {
+    private var daysInMonth: Int {
+        let calendar = Calendar.current
+        let now = Date()
+        let range = calendar.range(of: .day, in: .month, for: now)!
+        return range.count
+    }
+    
+    private var today: Int {
+        let calendar = Calendar.current
+        return calendar.component(.day, from: Date())
+    }
+    
+    private func dayOfWeekLetter(for day: Int) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        var components = calendar.dateComponents([.year, .month], from: now)
+        components.day = day
+        guard let date = calendar.date(from: components) else { return "" }
+        let weekday = calendar.component(.weekday, from: date)
+        // weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+        let letters = ["S", "M", "T", "W", "T", "F", "S"]
+        return letters[weekday - 1]
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let totalWidth = geometry.size.width
+            let dayWidth = totalWidth / CGFloat(daysInMonth)
+            
+            HStack(spacing: 0) {
+                ForEach(1...daysInMonth, id: \.self) { day in
+                    VStack(spacing: 6) {
+                        // Day of week letter
+                        Text(dayOfWeekLetter(for: day))
+                            .font(.system(size: day == today ? 20 : 16, weight: day == today ? .bold : .regular))
+                            .foregroundColor(day == today ? .primary : .secondary)
+                        
+                        // Date number
+                        Text("\(day)")
+                            .font(.system(size: day == today ? 32 : 24, weight: day == today ? .bold : .regular))
+                            .foregroundColor(day == today ? .primary : .secondary)
+                        
+                        if day == today {
+                            Circle()
+                                .fill(Color.primary)
+                                .frame(width: 6, height: 6)
+                        } else {
+                            Circle()
+                                .fill(Color.clear)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .frame(width: dayWidth)
+                }
+            }
+        }
+        .frame(height: 80)
     }
 }
 
