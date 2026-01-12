@@ -489,17 +489,21 @@ struct TideWaveContent: View {
     
     var body: some View {
         ZStack {
-            // Draw the sine wave
+            // Draw the sine wave (approximately 2.1 cycles per day for two high/low tides)
             Path { path in
                 let startX: CGFloat = 0
                 let endX = width
                 let step: CGFloat = 2
                 
+                // Tides have approximately 2.1 cycles per day (lunar day is ~24h 50min)
+                let cyclesPerDay = 2.1
+                
                 var firstPoint = true
                 for x in stride(from: startX, to: endX, by: step) {
                     // Map x position to time (0-24 hours)
                     let timeRatio = Double(x / width)
-                    let timeInRadians = timeRatio * 2 * Double.pi
+                    // Multiply by cyclesPerDay to get approximately 2.1 cycles per 24 hours
+                    let timeInRadians = timeRatio * 2 * Double.pi * cyclesPerDay
                     
                     // Calculate y position using sine wave with phase offset
                     let y = centerY + CGFloat(sin(timeInRadians + phaseOffset)) * amplitude
