@@ -47,6 +47,7 @@ struct EventMapView: View {
             
             MapViewWrapper(address: event?.location)
                 .frame(minHeight: 0)
+                .focusable(false)
         }
     }
 }
@@ -57,6 +58,7 @@ struct MapViewWrapper: UIViewRepresentable {
     func makeUIView(context: UIViewRepresentableContext<MapViewWrapper>) -> MKMapView {
         let mapView = MKMapView()
         mapView.mapType = .standard
+        mapView.isUserInteractionEnabled = false
         return mapView
     }
     

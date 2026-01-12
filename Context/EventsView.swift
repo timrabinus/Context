@@ -91,12 +91,12 @@ struct EventsView: View {
                         }
                         .padding(.leading, 20)
                         .padding(.trailing, 20)
-                        .onChange(of: focusedEventId) { oldValue, newValue in
+                        .onChange(of: focusedEventId) { newValue in
                             if let newValue = newValue {
                                 selectedEvent = calendarService.events.first { $0.id == newValue }
                             }
                         }
-                        .onChange(of: calendarService.events) { oldValue, newValue in
+                        .onChange(of: calendarService.events) { newValue in
                             // Set focus on first event when events are loaded
                             if !newValue.isEmpty && focusedEventId == nil {
                                 focusedEventId = newValue.first?.id
