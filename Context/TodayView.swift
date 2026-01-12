@@ -12,13 +12,14 @@ struct TodayView: View {
     @StateObject private var locationService = LocationService()
     @StateObject private var weatherService = WeatherService()
     @StateObject private var sunService = SunService()
+    @StateObject private var moonService = MoonService()
     @StateObject private var tideService = TideService()
     
     var body: some View {
         VStack(spacing: 20) {
             // Header with Clock
             HStack {
-                Text("Today")
+            Text("Today")
                     .font(.system(size: 56, weight: .bold))
                 
                 Spacer()
@@ -30,7 +31,7 @@ struct TodayView: View {
             
             // Tides Section
             if !tideService.tides.isEmpty || tideService.isLoading {
-                TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes)
+                TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes, moonTimes: moonService.moonTimes)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 40)
             }
@@ -43,6 +44,10 @@ struct TodayView: View {
                 
                 // Sun Times Section
                 SunCard(sunTimes: sunService.sunTimes)
+                    .frame(maxWidth: .infinity)
+                
+                // Moon Times Section
+                MoonCard(moonTimes: moonService.moonTimes)
                     .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 40)
@@ -62,8 +67,14 @@ struct TodayView: View {
     private func loadData() async {
         let coordinate = locationService.coordinate
         
-        // Calculate sun times synchronously (it's not async)
+        // Calculate sun and moon times synchronously (they're not async)
         sunService.calculateSunTimes(
+            for: Date(),
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude
+        )
+        
+        moonService.calculateMoonTimes(
             for: Date(),
             latitude: coordinate.latitude,
             longitude: coordinate.longitude
@@ -226,10 +237,53 @@ struct SunTimeRow: View {
     }
 }
 
+struct MoonCard: View {
+    let moonTimes: MoonTimes?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(Color(white: 0.7))
+                
+                Text("Moon")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+            }
+            
+            if let moonTimes = moonTimes {
+                VStack(alignment: .leading, spacing: 16) {
+                    SunTimeRow(
+                        icon: "moon.stars.fill",
+                        label: "Moonrise",
+                        time: moonTimes.moonrise,
+                        color: Color(white: 0.7)
+                    )
+                    
+                    SunTimeRow(
+                        icon: "moon.fill",
+                        label: "Moonset",
+                        time: moonTimes.moonset,
+                        color: Color(white: 0.6)
+                    )
+                }
+            } else {
+                Text("Calculating...")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(24)
+        .background(Color(white: 0.1))
+        .cornerRadius(16)
+    }
+}
+
 struct TidesCard: View {
     let tides: [TideEvent]
     let isLoading: Bool
     let sunTimes: SunTimes?
+    let moonTimes: MoonTimes?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -252,7 +306,7 @@ struct TidesCard: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 10)
             } else {
-                TideWaveView(tides: tides, sunTimes: sunTimes)
+                TideWaveView(tides: tides, sunTimes: sunTimes, moonTimes: moonTimes)
                     .frame(height: 200)
             }
         }
@@ -265,6 +319,7 @@ struct TidesCard: View {
 struct TideWaveView: View {
     let tides: [TideEvent]
     let sunTimes: SunTimes?
+    let moonTimes: MoonTimes?
     
     private var phaseOffset: Double {
         // Find the first high tide to determine phase
@@ -311,6 +366,7 @@ struct TideWaveView: View {
                     height: geometry.size.height,
                     tides: tides,
                     sunTimes: sunTimes,
+                    moonTimes: moonTimes,
                     phaseOffset: phaseOffset,
                     hourPosition: hourPosition
                 )
@@ -361,6 +417,7 @@ struct TideWaveContent: View {
     let height: CGFloat
     let tides: [TideEvent]
     let sunTimes: SunTimes?
+    let moonTimes: MoonTimes?
     let phaseOffset: Double
     let hourPosition: (Date) -> CGFloat
     
@@ -390,6 +447,44 @@ struct TideWaveContent: View {
         noonComponents.minute = 0
         guard let noon = calendar.date(from: noonComponents) else { return nil }
         return hourPosition(noon) * width
+    }
+    
+    private var moonriseX: CGFloat? {
+        guard let moonTimes = moonTimes else { return nil }
+        return hourPosition(moonTimes.moonrise) * width
+    }
+    
+    private var moonsetX: CGFloat? {
+        guard let moonTimes = moonTimes else { return nil }
+        return hourPosition(moonTimes.moonset) * width
+    }
+    
+    private var moonPeakX: CGFloat? {
+        guard let moonTimes = moonTimes else { return nil }
+        // Calculate midpoint between moonrise and moonset
+        let calendar = Calendar.current
+        let moonriseHour = Double(calendar.component(.hour, from: moonTimes.moonrise))
+        let moonriseMinute = Double(calendar.component(.minute, from: moonTimes.moonrise))
+        let moonsetHour = Double(calendar.component(.hour, from: moonTimes.moonset))
+        let moonsetMinute = Double(calendar.component(.minute, from: moonTimes.moonset))
+        
+        let moonriseTotal = moonriseHour + moonriseMinute / 60.0
+        let moonsetTotal = moonsetHour + moonsetMinute / 60.0
+        
+        // Calculate total duration (handling midnight crossing)
+        let totalHours: Double
+        if moonsetTotal < moonriseTotal {
+            // Crosses midnight
+            totalHours = (24.0 - moonriseTotal) + moonsetTotal
+        } else {
+            totalHours = moonsetTotal - moonriseTotal
+        }
+        
+        // Midpoint from moonrise
+        let midpointHours = totalHours / 2.0
+        let peakHour = (moonriseTotal + midpointHours).truncatingRemainder(dividingBy: 24.0)
+        
+        return (peakHour / 24.0) * width
     }
     
     var body: some View {
@@ -491,6 +586,162 @@ struct TideWaveContent: View {
                     }
                 }
                 .stroke(Color.orange.opacity(0.4), lineWidth: 3)
+            }
+            
+            // Draw moon path curve as two separate chords (PM and AM)
+            // Peak is at the midpoint between moonrise and moonset
+            if let moonTimes = moonTimes, let moonriseX = moonriseX, let moonsetX = moonsetX, let peakX = moonPeakX {
+                let peakY: CGFloat = 10
+                let amplitude = centerY - peakY
+                let step: CGFloat = 2
+                let midnightX = width
+                
+                // Check if moonset is before moonrise (crosses midnight)
+                let crossesMidnight = moonsetX < moonriseX
+                
+                if crossesMidnight {
+                    // Determine if peak is in AM (0 to moonsetX) or PM (moonriseX to width)
+                    let peakIsInAM = peakX < moonsetX
+                    
+                    if peakIsInAM {
+                        // Peak is in AM: PM chord rises only, AM chord rises and falls
+                        
+                        // Calculate what value the PM chord should reach at midnight
+                        let totalHours = (24.0 - (moonriseX / width * 24.0)) + (moonsetX / width * 24.0)
+                        let hoursToMidnight = 24.0 - (moonriseX / width * 24.0)
+                        let midnightRatio = hoursToMidnight / totalHours
+                        // At midnight, we're at this ratio of the full sine wave (0 to π)
+                        let midnightSineValue = midnightRatio * Double.pi
+                        let midnightY = centerY - CGFloat(sin(midnightSineValue)) * amplitude
+                        
+                        // PM chord: From moonrise to midnight (rising only, 0 to midnightSineValue)
+                        Path { path in
+                            let pmWidth = midnightX - moonriseX
+                            var firstPoint = true
+                            
+                            for x in stride(from: moonriseX, through: midnightX, by: step) {
+                                let xRatio = (x - moonriseX) / pmWidth
+                                // Map to sine wave from 0 to midnightSineValue (rising only)
+                                let sineParameter = xRatio * midnightSineValue
+                                let y = centerY - CGFloat(sin(sineParameter)) * amplitude
+                                
+                                if firstPoint {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                    firstPoint = false
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color(red: 0.8, green: 0.8, blue: 0.9), lineWidth: 3)
+                        
+                        // AM chord: From midnight to moonset (starts at midnightY, full sine wave)
+                        // Calculate the sine value range for AM chord
+                        // AM chord should go from midnightSineValue to π
+                        let amSineStart = midnightSineValue
+                        let amSineEnd = Double.pi
+                        let amSineRange = amSineEnd - amSineStart
+                        
+                        Path { path in
+                            let amWidth = moonsetX
+                            var firstPoint = true
+                            
+                            for x in stride(from: 0, through: moonsetX, by: step) {
+                                let xRatio = x / amWidth
+                                // Map to sine wave from midnightSineValue to π (continuing from PM chord)
+                                let sineParameter = amSineStart + (xRatio * amSineRange)
+                                let y = centerY - CGFloat(sin(sineParameter)) * amplitude
+                                
+                                if firstPoint {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                    firstPoint = false
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color(red: 0.8, green: 0.8, blue: 0.9), lineWidth: 3)
+                    } else {
+                        // Peak is in PM: PM chord rises and falls, AM chord falls only
+                        
+                        // Calculate what value the PM chord reaches at midnight
+                        let totalHours = (24.0 - (moonriseX / width * 24.0)) + (moonsetX / width * 24.0)
+                        let hoursToMidnight = 24.0 - (moonriseX / width * 24.0)
+                        let midnightRatio = hoursToMidnight / totalHours
+                        // At midnight, we're at this ratio of the full sine wave (0 to π)
+                        let midnightSineValue = midnightRatio * Double.pi
+                        let midnightY = centerY - CGFloat(sin(midnightSineValue)) * amplitude
+                        
+                        // PM chord: From moonrise to midnight (full sine wave, 0 to π)
+                        Path { path in
+                            let pmWidth = midnightX - moonriseX
+                            var firstPoint = true
+                            
+                            for x in stride(from: moonriseX, through: midnightX, by: step) {
+                                let xRatio = (x - moonriseX) / pmWidth
+                                // Map to sine wave from 0 to π (rising to peak, then falling)
+                                let sineParameter = xRatio * Double.pi
+                                let y = centerY - CGFloat(sin(sineParameter)) * amplitude
+                                
+                                if firstPoint {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                    firstPoint = false
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color(red: 0.8, green: 0.8, blue: 0.9), lineWidth: 3)
+                        
+                        // AM chord: From midnight to moonset (starts at midnightY, falling only)
+                        // Calculate the sine value range for AM chord
+                        // AM chord should go from midnightSineValue to π
+                        let amSineStart = midnightSineValue
+                        let amSineEnd = Double.pi
+                        let amSineRange = amSineEnd - amSineStart
+                        
+                        Path { path in
+                            let amWidth = moonsetX
+                            var firstPoint = true
+                            
+                            for x in stride(from: 0, through: moonsetX, by: step) {
+                                let xRatio = x / amWidth
+                                // Map to sine wave from midnightSineValue to π (continuing from PM chord, falling)
+                                let sineParameter = amSineStart + (xRatio * amSineRange)
+                                let y = centerY - CGFloat(sin(sineParameter)) * amplitude
+                                
+                                if firstPoint {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                    firstPoint = false
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color(red: 0.8, green: 0.8, blue: 0.9), lineWidth: 3)
+                    }
+                } else {
+                    // Normal case: moonrise to moonset in same day
+                    let moonPathWidth = moonsetX - moonriseX
+                    if moonPathWidth > 0 {
+                        Path { path in
+                            var firstPoint = true
+                            for x in stride(from: moonriseX, through: moonsetX, by: step) {
+                                let xRatio = (x - moonriseX) / moonPathWidth
+                                let sineParameter = xRatio * Double.pi
+                                let y = centerY - CGFloat(sin(sineParameter)) * amplitude
+                                
+                                if firstPoint {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                    firstPoint = false
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color(red: 0.8, green: 0.8, blue: 0.9), lineWidth: 3)
+                    }
+                }
             }
             
             // Draw drop lines at sunrise, midday, and sunset
