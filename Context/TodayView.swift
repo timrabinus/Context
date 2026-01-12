@@ -319,6 +319,43 @@ struct TideWaveView: View {
     }
 }
 
+struct CurrentTimeDot: View {
+    @State private var currentTime = Date()
+    @State private var timer: Timer?
+    let width: CGFloat
+    let centerY: CGFloat
+    let hourPosition: (Date) -> CGFloat
+    
+    var body: some View {
+        let x = hourPosition(currentTime) * width
+        
+        VStack(spacing: 4) {
+            Circle()
+                .fill(Color.primary)
+                .frame(width: 10, height: 10)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2)
+                )
+            
+            Text(currentTime, style: .time)
+                .font(.caption)
+                .foregroundColor(.primary)
+        }
+        .position(x: x, y: centerY + 15)
+        .onAppear {
+            currentTime = Date()
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                currentTime = Date()
+            }
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+}
+
 struct TideWaveContent: View {
     let width: CGFloat
     let height: CGFloat
@@ -388,6 +425,13 @@ struct TideWaveContent: View {
                 path.addLine(to: CGPoint(x: width, y: centerY))
             }
             .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+            
+            // Current time dot
+            CurrentTimeDot(
+                width: width,
+                centerY: centerY,
+                hourPosition: hourPosition
+            )
             
             // Draw tick marks at 6am, 12pm, 6pm
             Group {
@@ -501,24 +545,6 @@ struct TideWaveContent: View {
                         .foregroundColor(.red)
                         .position(x: sunsetX, y: height - 15)
                 }
-            }
-            
-            // Draw tide markers (without time labels)
-            ForEach(tides.prefix(8)) { tide in
-                let x = hourPosition(tide.time) * width
-                let timeRatio = Double(x / width)
-                let timeInRadians = timeRatio * 2 * Double.pi
-                let y = centerY + CGFloat(sin(timeInRadians + phaseOffset)) * amplitude
-                
-                // Marker dot
-                Circle()
-                    .fill(tide.type == .high ? Color.blue : Color.gray)
-                    .frame(width: 12, height: 12)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white, lineWidth: 2)
-                    )
-                    .position(x: x, y: y)
             }
         }
     }
