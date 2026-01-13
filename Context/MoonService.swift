@@ -31,7 +31,6 @@ class MoonService: ObservableObject {
     @Published var moonTimes: MoonTimes?
     
     func calculateMoonTimes(for date: Date, latitude: Double, longitude: Double) {
-        let calendar = Calendar.current
         let timeZone = TimeZone.current
         
         // Calculate moon rise and set using simplified calculations

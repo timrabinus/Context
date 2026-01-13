@@ -32,22 +32,22 @@ struct EventMapView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let location = event?.location, !location.isEmpty {
-                Text(processLocation(location))
-                    .font(.headline)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal)
-                    .padding(.top)
-                    .frame(maxHeight: 150, alignment: .topLeading)
-            }
-            
-            Spacer(minLength: 0)
-            
+        VStack(alignment: .leading, spacing: 20) {
             MapViewWrapper(address: event?.location)
                 .frame(minHeight: 0)
                 .focusable(false)
+                .padding(.top, 16)
+            
+            if let location = event?.location, !location.isEmpty {
+                Text(processLocation(location))
+                    .font(.body)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .padding(.bottom)
+                    .frame(maxHeight: 160, alignment: .topLeading)
+            }
         }
     }
 }
@@ -59,6 +59,8 @@ struct MapViewWrapper: UIViewRepresentable {
         let mapView = MKMapView()
         mapView.mapType = .standard
         mapView.isUserInteractionEnabled = false
+        mapView.overrideUserInterfaceStyle = .light
+        mapView.showsScale = true
         return mapView
     }
     

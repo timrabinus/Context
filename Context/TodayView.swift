@@ -17,17 +17,15 @@ struct TodayView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            // Header with Clock
-            HStack {
-            Text("Today")
-                    .font(.system(size: 56, weight: .bold))
-                
-                Spacer()
-                
-                ClockView()
-            }
-            .padding(.top, 20)
-            .padding(.horizontal, 40)
+            // Header
+//            HStack {
+//                Text("Today")
+//                    .font(.system(size: 56, weight: .bold))
+//                
+//                Spacer()
+//            }
+//            .padding(.top, 20)
+//            .padding(.horizontal, 40)
             
             // Tides Section
             if !tideService.tides.isEmpty || tideService.isLoading {
@@ -178,7 +176,7 @@ struct SunCard: View {
             HStack {
                 Image(systemName: "sun.horizon.fill")
                     .font(.system(size: 36))
-                    .foregroundColor(.orange)
+                    .foregroundColor(.yellow)
                 
                 Text("Sun")
                     .font(.title2)
@@ -291,10 +289,12 @@ struct TidesCard: View {
                 Image(systemName: "water.waves")
                     .font(.system(size: 36))
                     .foregroundColor(.cyan)
-                
-                Text("Tides")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(Color(white: 0.7))
+                Image(systemName: "sun.horizon.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(.yellow)
             }
             
             if isLoading {
@@ -589,7 +589,7 @@ struct TideWaveContent: View {
                         }
                     }
                 }
-                .stroke(Color.orange.opacity(0.4), lineWidth: 3)
+                .stroke(Color.yellow.opacity(0.8), lineWidth: 5)
             }
             
             // Draw moon path curve as two separate chords (PM and AM)
@@ -616,7 +616,6 @@ struct TideWaveContent: View {
                         let midnightRatio = hoursToMidnight / totalHours
                         // At midnight, we're at this ratio of the full sine wave (0 to π)
                         let midnightSineValue = midnightRatio * Double.pi
-                        let midnightY = centerY - CGFloat(sin(midnightSineValue)) * amplitude
                         
                         // PM chord: From moonrise to midnight (rising only, 0 to midnightSineValue)
                         Path { path in
@@ -674,7 +673,6 @@ struct TideWaveContent: View {
                         let midnightRatio = hoursToMidnight / totalHours
                         // At midnight, we're at this ratio of the full sine wave (0 to π)
                         let midnightSineValue = midnightRatio * Double.pi
-                        let midnightY = centerY - CGFloat(sin(midnightSineValue)) * amplitude
                         
                         // PM chord: From moonrise to midnight (full sine wave, 0 to π)
                         Path { path in
