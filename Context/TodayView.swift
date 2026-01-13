@@ -14,13 +14,14 @@ struct TodayView: View {
     @StateObject private var sunService = SunService()
     @StateObject private var moonService = MoonService()
     @StateObject private var tideService = TideService()
+    @StateObject private var calendarService = CalendarService()
     
     var body: some View {
         VStack(spacing: 20) {
             
             // Tides Section
             if !tideService.tides.isEmpty || tideService.isLoading {
-                TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes, moonTimes: moonService.moonTimes, hourlyForecast: weatherService.hourlyForecast)
+                TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes, moonTimes: moonService.moonTimes, hourlyForecast: weatherService.hourlyForecast, todayEvents: todayEvents)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 40)
             }
@@ -56,6 +57,16 @@ struct TodayView: View {
         }
     }
     
+    private var todayEvents: [CalendarEvent] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        
+        return calendarService.events.filter { event in
+            event.startDate >= today && event.startDate < tomorrow
+        }
+    }
+    
     private func loadData() async {
         let coordinate = locationService.coordinate
         
@@ -72,7 +83,7 @@ struct TodayView: View {
             longitude: coordinate.longitude
         )
         
-        // Load weather and tides concurrently
+        // Load weather, tides, and calendars concurrently
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 await weatherService.fetchWeather(
@@ -93,6 +104,10 @@ struct TodayView: View {
                     latitude: coordinate.latitude,
                     longitude: coordinate.longitude
                 )
+            }
+            
+            group.addTask {
+                await calendarService.fetchCalendars()
             }
         }
     }
@@ -284,6 +299,7 @@ struct TidesCard: View {
     let sunTimes: SunTimes?
     let moonTimes: MoonTimes?
     let hourlyForecast: [HourlyWeatherData]
+    let todayEvents: [CalendarEvent]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -308,7 +324,7 @@ struct TidesCard: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 10)
             } else {
-                TideWaveView(tides: tides, sunTimes: sunTimes, moonTimes: moonTimes, hourlyForecast: hourlyForecast)
+                TideWaveView(tides: tides, sunTimes: sunTimes, moonTimes: moonTimes, hourlyForecast: hourlyForecast, todayEvents: todayEvents)
                     .frame(height: 360)
             }
         }
@@ -323,6 +339,7 @@ struct TideWaveView: View {
     let sunTimes: SunTimes?
     let moonTimes: MoonTimes?
     let hourlyForecast: [HourlyWeatherData]
+    let todayEvents: [CalendarEvent]
     
     private var phaseOffset: Double {
         // Find the first high tide to determine phase
@@ -372,7 +389,8 @@ struct TideWaveView: View {
                     moonTimes: moonTimes,
                     phaseOffset: phaseOffset,
                     hourPosition: hourPosition,
-                    hourlyForecast: hourlyForecast
+                    hourlyForecast: hourlyForecast,
+                    todayEvents: todayEvents
                 )
             }
         }
@@ -425,6 +443,15 @@ struct TideWaveContent: View {
     let phaseOffset: Double
     let hourPosition: (Date) -> CGFloat
     let hourlyForecast: [HourlyWeatherData]
+    let todayEvents: [CalendarEvent]
+    
+    private var calendarColorMap: [String: Color] {
+        Dictionary(uniqueKeysWithValues: CalendarSource.predefinedCalendars.map { ($0.id, $0.color) })
+    }
+    
+    private func color(for calendarId: String) -> Color {
+        calendarColorMap[calendarId] ?? .gray
+    }
     
     private var centerY: CGFloat {
         height / 2
@@ -805,6 +832,28 @@ struct TideWaveContent: View {
                 }
             }
             
+            // Today's events on the timeline
+            ForEach(todayEvents) { event in
+                let x = hourPosition(event.startDate) * width
+                let eventY = centerY
+                let eventColor = color(for: event.calendarId)
+                
+                VStack(spacing: 6) {
+                    Image(systemName: "calendar.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(eventColor)
+                        .background(
+                            Circle()
+                                .fill(Color.black.opacity(1.0))
+                                .frame(width: 56, height: 56)
+                        )
+                    
+                    Text(event.startDate, style: .time)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .position(x: x, y: eventY)
+            }
         }
     }
 }
