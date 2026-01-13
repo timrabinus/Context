@@ -17,38 +17,32 @@ struct TodayView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            // Header
-//            HStack {
-//                Text("Today")
-//                    .font(.system(size: 56, weight: .bold))
-//                
-//                Spacer()
-//            }
-//            .padding(.top, 20)
-//            .padding(.horizontal, 40)
             
             // Tides Section
             if !tideService.tides.isEmpty || tideService.isLoading {
-                TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes, moonTimes: moonService.moonTimes)
+                TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes, moonTimes: moonService.moonTimes, hourlyForecast: weatherService.hourlyForecast)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 40)
             }
-                        
-            // Main content in a grid
-            HStack(spacing: 40) {
-                // Weather Section
-                WeatherCard(weather: weatherService.weather, isLoading: weatherService.isLoading)
-                    .frame(maxWidth: .infinity)
-                
-                // Sun Times Section
-                SunCard(sunTimes: sunService.sunTimes)
-                    .frame(maxWidth: .infinity)
-                
-                // Moon Times Section
-                MoonCard(moonTimes: moonService.moonTimes)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 40)
+            WeatherTimelineView()
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 40)   
+
+//            // Main content in a grid
+//            HStack(spacing: 40) {
+//                // Weather Section
+//                WeatherCard(weather: weatherService.weather, isLoading: weatherService.isLoading)
+//                    .frame(maxWidth: .infinity)
+//                
+//                // Sun Times Section
+//                SunCard(sunTimes: sunService.sunTimes)
+//                    .frame(maxWidth: .infinity)
+//                
+//                // Moon Times Section
+//                MoonCard(moonTimes: moonService.moonTimes)
+//                    .frame(maxWidth: .infinity)
+//            }
+//            .padding(.horizontal, 40)
             
             Spacer()
             
@@ -82,6 +76,13 @@ struct TodayView: View {
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 await weatherService.fetchWeather(
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
+                )
+            }
+            
+            group.addTask {
+                await weatherService.fetchHourlyForecast(
                     latitude: coordinate.latitude,
                     longitude: coordinate.longitude
                 )
@@ -282,6 +283,7 @@ struct TidesCard: View {
     let isLoading: Bool
     let sunTimes: SunTimes?
     let moonTimes: MoonTimes?
+    let hourlyForecast: [HourlyWeatherData]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -306,8 +308,8 @@ struct TidesCard: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 10)
             } else {
-                TideWaveView(tides: tides, sunTimes: sunTimes, moonTimes: moonTimes)
-                    .frame(height: 200)
+                TideWaveView(tides: tides, sunTimes: sunTimes, moonTimes: moonTimes, hourlyForecast: hourlyForecast)
+                    .frame(height: 360)
             }
         }
         .padding(24)
@@ -320,6 +322,7 @@ struct TideWaveView: View {
     let tides: [TideEvent]
     let sunTimes: SunTimes?
     let moonTimes: MoonTimes?
+    let hourlyForecast: [HourlyWeatherData]
     
     private var phaseOffset: Double {
         // Find the first high tide to determine phase
@@ -368,7 +371,8 @@ struct TideWaveView: View {
                     sunTimes: sunTimes,
                     moonTimes: moonTimes,
                     phaseOffset: phaseOffset,
-                    hourPosition: hourPosition
+                    hourPosition: hourPosition,
+                    hourlyForecast: hourlyForecast
                 )
             }
         }
@@ -420,6 +424,7 @@ struct TideWaveContent: View {
     let moonTimes: MoonTimes?
     let phaseOffset: Double
     let hourPosition: (Date) -> CGFloat
+    let hourlyForecast: [HourlyWeatherData]
     
     private var centerY: CGFloat {
         height / 2
@@ -799,9 +804,98 @@ struct TideWaveContent: View {
                         .position(x: sunsetX, y: height - 15)
                 }
             }
+            
         }
     }
 }
+
+
+struct WeatherTimelineView: View {
+    @StateObject private var weatherService = WeatherService()
+    @StateObject private var locationService = LocationService()
+    
+    private func hourPosition(_ date: Date) -> CGFloat {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let hours = Double(components.hour ?? 0)
+        let minutes = Double(components.minute ?? 0)
+        let totalHours = hours + minutes / 60.0
+        return CGFloat(totalHours / 24.0)
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height: CGFloat = 100
+            
+            ZStack {
+                // Hourly weather items positioned below timeline
+                ForEach(Array(weatherService.hourlyForecast.enumerated()), id: \.offset) { index, item in
+                    let x = hourPosition(item.time) * width
+                    let weatherY = height - 40
+                    
+                    VStack(spacing: 6) {
+                        // Time label
+                        Text(formatWeatherTime(item.time))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        // Weather icon
+                        Image(systemName: weatherIconName(for: item.icon))
+                            .font(.system(size: 32))
+                            .foregroundColor(.white)
+                            .frame(width: 40, height: 40)
+                        
+                        // Temperature
+                        Text("\(Int(item.temperature))°")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .position(x: x, y: weatherY)
+                }
+            }
+        }
+        .frame(height: 100)
+        .task {
+            let coordinate = locationService.coordinate
+            await weatherService.fetchHourlyForecast(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude
+            )
+        }
+    }
+    
+    private func formatWeatherTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // If it's within the current hour, show "Now"
+        if calendar.isDate(date, equalTo: now, toGranularity: .hour) {
+            return "Now"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "ha"
+        return formatter.string(from: date)
+    }
+    
+    private func weatherIconName(for iconCode: String) -> String {
+        // Map OpenWeatherMap icon codes to SF Symbols
+        switch iconCode {
+        case "01d", "01n": return "sun.max.fill"
+        case "02d", "02n": return "cloud.sun.fill"
+        case "03d", "03n": return "cloud.fill"
+        case "04d", "04n": return "cloud.fill"
+        case "09d", "09n": return "cloud.rain.fill"
+        case "10d", "10n": return "cloud.sun.rain.fill"
+        case "11d", "11n": return "cloud.bolt.fill"
+        case "13d", "13n": return "cloud.snow.fill"
+        case "50d", "50n": return "cloud.fog.fill"
+        default: return "cloud.fill"
+        }
+    }
+}
+    
 
 struct ClockView: View {
     @State private var currentTime = Date()

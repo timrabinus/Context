@@ -59,19 +59,19 @@ class MoonService: ObservableObject {
         let phaseValue = (daysSinceNewMoon.truncatingRemainder(dividingBy: 29.53)) / 29.53
         let phase = moonPhaseFromValue(phaseValue)
         
-        // Mock times: moonrise at 10pm, moonset at 7am (next day)
+        // Auckland, NZ times: Moonrise about 11:40 PM-12:00 AM (late tonight), Moonset about 2:05 PM-4:24 PM
         var components = calendar.dateComponents([.year, .month, .day], from: date)
         components.timeZone = timeZone
         
-        // Moonrise at 10pm today
-        components.hour = 22
-        components.minute = 0
+        // Moonrise at 11:50 PM today (midpoint of 11:40 PM-12:00 AM)
+        components.hour = 23
+        components.minute = 50
         let moonrise = calendar.date(from: components) ?? date
         
-        // Moonset at 7am next day
-        components.hour = 7
-        components.minute = 0
-        let moonset = calendar.date(byAdding: .day, value: 1, to: calendar.date(from: components) ?? date) ?? date
+        // Moonset at 3:15 PM today (midpoint of 2:05 PM-4:24 PM)
+        components.hour = 15
+        components.minute = 15
+        let moonset = calendar.date(from: components) ?? date
         
         return MoonTimes(moonrise: moonrise, moonset: moonset, phase: phase)
     }
