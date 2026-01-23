@@ -69,6 +69,9 @@ struct HourlyForecastResponse: Codable {
 class WeatherService: ObservableObject {
     @Published var weather: WeatherData?
     @Published var hourlyForecast: [HourlyWeatherData] = []
+    @Published var dailyForecastIcons: [String: String] = [:]
+    @Published var dailyForecastTemps: [String: Double] = [:]
+    @Published private(set) var dailyIconCache: [String: String] = [:]
     @Published var isLoading = false
     @Published var error: String?
     
@@ -77,6 +80,19 @@ class WeatherService: ObservableObject {
     private let apiKey = "YOUR_API_KEY_HERE"
     private let baseURL = "https://api.openweathermap.org/data/2.5/weather"
     private let forecastURL = "https://api.openweathermap.org/data/2.5/forecast"
+    private let dailyIconCacheKey = "dailyForecastIconCache"
+    private let dayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    init() {
+        loadDailyIconCache()
+    }
     
     func fetchWeather(latitude: Double, longitude: Double) async {
         isLoading = true
@@ -171,6 +187,7 @@ class WeatherService: ObservableObject {
             }
             
             self.hourlyForecast = forecast
+            updateMockDailyForecastIcons(now: now)
             return
         }
         
@@ -185,15 +202,14 @@ class WeatherService: ObservableObject {
             let (data, _) = try await URLSession.shared.data(from: url)
             let response = try JSONDecoder().decode(HourlyForecastResponse.self, from: data)
             
-            // Get 24 hours of forecast data
+            // Get 24 hours of forecast data for timeline
             let now = Date()
             let calendar = Calendar.current
             let currentHour = calendar.dateComponents([.year, .month, .day, .hour], from: now)
             guard let roundedNow = calendar.date(from: currentHour) else { return }
             
-            // OpenWeatherMap forecast API returns 3-hour intervals, so we need to interpolate or use available data
-            // For now, use all available forecast items (typically 40 items = 5 days * 8 per day)
-            // Filter to get next 24 hours
+            // OpenWeatherMap forecast API returns 3-hour intervals
+            // Filter to get next 24 hours for the hourly timeline
             let next24Hours = calendar.date(byAdding: .hour, value: 24, to: roundedNow) ?? now
             
             let forecastItems = response.list.filter { item in
@@ -226,8 +242,85 @@ class WeatherService: ObservableObject {
                 }
             }
             self.hourlyForecast = hourlyForecast
+            updateDailyForecastIcons(from: response.list, now: now)
         } catch {
             self.error = "Failed to fetch hourly forecast: \(error.localizedDescription)"
         }
+    }
+
+    private func updateDailyForecastIcons(from items: [HourlyForecastResponse.ForecastItem], now: Date) {
+        let calendar = Calendar.current
+        var bestByDay: [String: (icon: String, temp: Double, delta: TimeInterval, date: Date)] = [:]
+
+        for item in items {
+            let itemDate = Date(timeIntervalSince1970: item.dt)
+            let dayStart = calendar.startOfDay(for: itemDate)
+            let dayKey = dayKeyFormatter.string(from: dayStart)
+            let midday = calendar.date(byAdding: .hour, value: 12, to: dayStart) ?? itemDate
+            let delta = abs(itemDate.timeIntervalSince(midday))
+
+            if let existing = bestByDay[dayKey], existing.delta <= delta {
+                continue
+            }
+
+            let icon = item.weather.first?.icon ?? "01d"
+            bestByDay[dayKey] = (icon: icon, temp: item.main.temp, delta: delta, date: dayStart)
+        }
+
+        var icons: [String: String] = [:]
+        var temps: [String: Double] = [:]
+        for (dayKey, entry) in bestByDay {
+            let dayDate = entry.date
+            if dayDate >= calendar.startOfDay(for: now) {
+                icons[dayKey] = entry.icon
+                temps[dayKey] = entry.temp
+            }
+        }
+
+        dailyForecastIcons = icons
+        dailyForecastTemps = temps
+        mergeDailyIconCache(with: icons)
+    }
+
+    private func updateMockDailyForecastIcons(now: Date) {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: now)
+        let icons = ["02d", "01d", "03d", "04d", "10d"]
+        let temps = [24.0, 26.0, 25.0, 23.0, 22.0]
+        var dailyIcons: [String: String] = [:]
+        var dailyTemps: [String: Double] = [:]
+
+        for offset in 0..<icons.count {
+            guard let dayDate = calendar.date(byAdding: .day, value: offset, to: startOfDay) else { continue }
+            let dayKey = dayKeyFormatter.string(from: dayDate)
+            dailyIcons[dayKey] = icons[offset]
+            dailyTemps[dayKey] = temps[offset]
+        }
+
+        dailyForecastIcons = dailyIcons
+        dailyForecastTemps = dailyTemps
+        mergeDailyIconCache(with: dailyIcons)
+    }
+
+    private func mergeDailyIconCache(with newIcons: [String: String]) {
+        guard !newIcons.isEmpty else { return }
+        var updated = dailyIconCache
+        for (key, icon) in newIcons {
+            updated[key] = icon
+        }
+        dailyIconCache = updated
+        saveDailyIconCache()
+    }
+
+    private func loadDailyIconCache() {
+        let defaults = UserDefaults.standard
+        guard let data = defaults.data(forKey: dailyIconCacheKey) else { return }
+        guard let decoded = try? JSONDecoder().decode([String: String].self, from: data) else { return }
+        dailyIconCache = decoded
+    }
+
+    private func saveDailyIconCache() {
+        guard let data = try? JSONEncoder().encode(dailyIconCache) else { return }
+        UserDefaults.standard.set(data, forKey: dailyIconCacheKey)
     }
 }
