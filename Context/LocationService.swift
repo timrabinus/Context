@@ -14,14 +14,14 @@ class LocationService: ObservableObject {
     @Published var location: CLLocation?
     @Published var locationName: String = "Unknown Location"
     
-    // Default location (San Francisco) - can be configured
-    private let defaultLocation = CLLocation(latitude: 37.7749, longitude: -122.4194)
+    // Default location (Piha, New Zealand) - can be configured
+    private let defaultLocation = CLLocation(latitude: -36.9545, longitude: 174.4670)
     
     init() {
         // For tvOS, use default location since GPS isn't available
         // In a real app, you might want to allow users to set their location
         self.location = defaultLocation
-        self.locationName = "San Francisco, CA"
+        self.locationName = "Piha, New Zealand"
     }
     
     func setLocation(latitude: Double, longitude: Double, name: String? = nil) {
