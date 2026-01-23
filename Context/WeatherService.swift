@@ -138,14 +138,17 @@ class WeatherService: ObservableObject {
             let currentHour = calendar.dateComponents([.year, .month, .day, .hour], from: now)
             let roundedNow = calendar.date(from: currentHour) ?? now
             
-            // Generate forecast data every 2 hours (12 data points for 24 hours)
+            // Generate forecast data for even hours including midnight (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
             var forecast: [HourlyWeatherData] = []
             let baseTemp = 24.0
             let icons = ["02d", "02d", "01d", "01d", "01d", "02d", "02d", "02d", "02d", "02d", "02d", "02d"]
             let conditions = ["Cloudy", "Cloudy", "Clear", "Clear", "Clear", "Cloudy", "Cloudy", "Cloudy", "Cloudy", "Cloudy", "Cloudy", "Cloudy"]
             
-            for hour in stride(from: 0, to: 24, by: 2) {
-                guard let hourDate = calendar.date(byAdding: .hour, value: hour, to: roundedNow) else { continue }
+            // Start from midnight (hour 0) of the current day
+            let startOfDay = calendar.startOfDay(for: now)
+            
+            for hour in [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22] {
+                guard let hourDate = calendar.date(byAdding: .hour, value: hour, to: startOfDay) else { continue }
                 // Vary temperature slightly throughout the day (cooler at night, warmer during day)
                 let hourOfDay = calendar.component(.hour, from: hourDate)
                 let tempVariation: Double
@@ -198,10 +201,12 @@ class WeatherService: ObservableObject {
                 return itemDate >= roundedNow && itemDate <= next24Hours
             }
             
-            // Generate forecast data every 2 hours (12 data points for 24 hours)
+            // Generate forecast data for even hours including midnight (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
             var hourlyForecast: [HourlyWeatherData] = []
-            for hour in stride(from: 0, to: 24, by: 2) {
-                guard let hourDate = calendar.date(byAdding: .hour, value: hour, to: roundedNow) else { continue }
+            let startOfDay = calendar.startOfDay(for: now)
+            
+            for hour in [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22] {
+                guard let hourDate = calendar.date(byAdding: .hour, value: hour, to: startOfDay) else { continue }
                 
                 // Find the closest forecast item
                 let closestItem = forecastItems.min { item1, item2 in

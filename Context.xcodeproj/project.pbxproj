@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5B959C312F1376760013A05D /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 5B959C302F1376760013A05D /* Settings.bundle */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		5B959C1F2F1376760013A05D /* Context.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Context.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B959C302F1376760013A05D /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = Settings.bundle; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +38,7 @@
 			isa = PBXGroup;
 			children = (
 				5B959C212F1376760013A05D /* Context */,
+				5B959C302F1376760013A05D /* Settings.bundle */,
 				5B959C202F1376760013A05D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5B959C312F1376760013A05D /* Settings.bundle in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

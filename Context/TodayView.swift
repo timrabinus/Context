@@ -17,9 +17,17 @@ struct TodayView: View {
     @StateObject private var calendarService = CalendarService()
     
     var body: some View {
-        VStack(spacing: 20) {
+        ZStack {
+            // Weather background
+            WeatherBackgroundView(
+                weather: weatherService.weather,
+                sunTimes: sunService.sunTimes
+            )
+            .ignoresSafeArea()
             
-            // Tides Section
+            VStack(spacing: 20) {
+                
+                // Tides Section
             if !tideService.tides.isEmpty || tideService.isLoading {
                 TidesCard(tides: tideService.tides, isLoading: tideService.isLoading, sunTimes: sunService.sunTimes, moonTimes: moonService.moonTimes, hourlyForecast: weatherService.hourlyForecast, todayEvents: todayEvents)
                     .frame(maxWidth: .infinity)
@@ -50,8 +58,9 @@ struct TodayView: View {
             // Calendar line
             CalendarLineView()
                 .padding(.bottom, 20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             await loadData()
         }
@@ -113,76 +122,76 @@ struct TodayView: View {
     }
 }
 
-struct WeatherCard: View {
-    let weather: WeatherData?
-    let isLoading: Bool
+// struct WeatherCard: View {
+//     let weather: WeatherData?
+//     let isLoading: Bool
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "cloud.sun.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(.blue)
+//     var body: some View {
+//         VStack(alignment: .leading, spacing: 12) {
+//             HStack {
+//                 Image(systemName: "cloud.sun.fill")
+//                     .font(.system(size: 36))
+//                     .foregroundColor(.blue)
                 
-                Text("Weather")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-            }
+//                 Text("Weather")
+//                     .font(.title2)
+//                     .fontWeight(.semibold)
+//             }
             
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 20)
-            } else if let weather = weather {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(Int(weather.temperature))°")
-                            .font(.system(size: 48, weight: .bold))
+//             if isLoading {
+//                 ProgressView()
+//                     .frame(maxWidth: .infinity, alignment: .center)
+//                     .padding(.vertical, 20)
+//             } else if let weather = weather {
+//                 VStack(alignment: .leading, spacing: 10) {
+//                     HStack(alignment: .firstTextBaseline, spacing: 6) {
+//                         Text("\(Int(weather.temperature))°")
+//                             .font(.system(size: 48, weight: .bold))
                         
-                        Text("F")
-                            .font(.title3)
-                            .foregroundColor(.secondary)
-                    }
+//                         Text("F")
+//                             .font(.title3)
+//                             .foregroundColor(.secondary)
+//                     }
                     
-                    Text(weather.condition)
-                        .font(.title3)
-                        .foregroundColor(.secondary)
+//                     Text(weather.condition)
+//                         .font(.title3)
+//                         .foregroundColor(.secondary)
                     
-                    Text(weather.description.capitalized)
-                        .font(.body)
-                        .foregroundColor(.secondary)
+//                     Text(weather.description.capitalized)
+//                         .font(.body)
+//                         .foregroundColor(.secondary)
                     
-                    Divider()
-                        .padding(.vertical, 4)
+//                     Divider()
+//                         .padding(.vertical, 4)
                     
-                    HStack(spacing: 30) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Humidity")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(weather.humidity)%")
-                                .font(.body)
-                        }
+//                     HStack(spacing: 30) {
+//                         VStack(alignment: .leading, spacing: 2) {
+//                             Text("Humidity")
+//                                 .font(.caption)
+//                                 .foregroundColor(.secondary)
+//                             Text("\(weather.humidity)%")
+//                                 .font(.body)
+//                         }
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Wind")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(Int(weather.windSpeed)) mph")
-                                .font(.body)
-                        }
-                    }
-                }
-            } else {
-                Text("Unable to load weather")
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(24)
-        .background(Color(white: 0.1))
-        .cornerRadius(16)
-    }
-}
+//                         VStack(alignment: .leading, spacing: 2) {
+//                             Text("Wind")
+//                                 .font(.caption)
+//                                 .foregroundColor(.secondary)
+//                             Text("\(Int(weather.windSpeed)) mph")
+//                                 .font(.body)
+//                         }
+//                     }
+//                 }
+//             } else {
+//                 Text("Unable to load weather")
+//                     .foregroundColor(.secondary)
+//             }
+//         }
+//         .padding(24)
+//         .background(Color(white: 0.1))
+//         .cornerRadius(16)
+//     }
+// }
 
 struct SunCard: View {
     let sunTimes: SunTimes?
@@ -304,15 +313,18 @@ struct TidesCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "water.waves")
+                Image(systemName: "figure")
                     .font(.system(size: 36))
-                    .foregroundColor(.cyan)
-                Image(systemName: "moon.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(Color(white: 0.7))
+                    .foregroundColor(.green)
                 Image(systemName: "sun.horizon.fill")
                     .font(.system(size: 36))
                     .foregroundColor(.yellow)
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(Color(white: 0.7))
+                Image(systemName: "water.waves")
+                    .font(.system(size: 36))
+                    .foregroundColor(.cyan)
             }
             
             if isLoading {
@@ -329,7 +341,7 @@ struct TidesCard: View {
             }
         }
         .padding(24)
-        .background(Color(white: 0.1))
+        .background(Color(white: 0.75).opacity(0.25))
         .cornerRadius(16)
     }
 }
@@ -453,6 +465,30 @@ struct TideWaveContent: View {
         calendarColorMap[calendarId] ?? .gray
     }
     
+    private var wakeTime: Date {
+        let defaults = UserDefaults.standard
+        let wakeSeconds = defaults.double(forKey: "wakeTime")
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .second, value: Int(wakeSeconds), to: startOfDay) ?? startOfDay
+    }
+    
+    private var sleepTime: Date {
+        let defaults = UserDefaults.standard
+        let sleepSeconds = defaults.double(forKey: "sleepTime")
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .second, value: Int(sleepSeconds), to: startOfDay) ?? startOfDay
+    }
+    
+    private var wakeX: CGFloat {
+        hourPosition(wakeTime) * width
+    }
+    
+    private var sleepX: CGFloat {
+        hourPosition(sleepTime) * width
+    }
+    
     private var centerY: CGFloat {
         height / 2
     }
@@ -550,12 +586,62 @@ struct TideWaveContent: View {
             }
             .stroke(Color.cyan, lineWidth: 3)
             
-            // Draw center line (day line)
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: centerY))
-                path.addLine(to: CGPoint(x: width, y: centerY))
+            // Draw center line (day line) - green between wake and sleep times, darker green during sleep
+            ZStack {
+                // Default line for the full width
+                Path { path in
+                    path.move(to: CGPoint(x: 0, y: centerY))
+                    path.addLine(to: CGPoint(x: width, y: centerY))
+                }
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                
+                if sleepX > wakeX {
+                    // Normal case: wake before sleep (7am to 11pm)
+                    // Green segment during wake time (7am to 11pm)
+                    Path { path in
+                        path.move(to: CGPoint(x: wakeX, y: centerY))
+                        path.addLine(to: CGPoint(x: sleepX, y: centerY))
+                    }
+                    .stroke(Color.green, lineWidth: 8)
+                    
+                    // Darker green segment during sleep time (11pm to 7am)
+                    // From sleep to end of day
+                    Path { path in
+                        path.move(to: CGPoint(x: sleepX, y: centerY))
+                        path.addLine(to: CGPoint(x: width, y: centerY))
+                    }
+                    .stroke(Color(red: 0.0, green: 0.5, blue: 0.0), lineWidth: 8)
+                    
+                    // From start of day to wake
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: centerY))
+                        path.addLine(to: CGPoint(x: wakeX, y: centerY))
+                    }
+                    .stroke(Color(red: 0.0, green: 0.5, blue: 0.0), lineWidth: 8)
+                } else {
+                    // Sleep time is before wake time (crosses midnight)
+                    // Darker green from sleep to wake (sleep time)
+                    Path { path in
+                        path.move(to: CGPoint(x: sleepX, y: centerY))
+                        path.addLine(to: CGPoint(x: wakeX, y: centerY))
+                    }
+                    .stroke(Color(red: 0.0, green: 0.5, blue: 0.0), lineWidth: 8)
+                    
+                    // Green from wake to end of day (wake time)
+                    Path { path in
+                        path.move(to: CGPoint(x: wakeX, y: centerY))
+                        path.addLine(to: CGPoint(x: width, y: centerY))
+                    }
+                    .stroke(Color.green, lineWidth: 8)
+                    
+                    // Green from start of day to sleep (wake time)
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: centerY))
+                        path.addLine(to: CGPoint(x: sleepX, y: centerY))
+                    }
+                    .stroke(Color.green, lineWidth: 8)
+                }
             }
-            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
             
             // Current time dot
             CurrentTimeDot(
@@ -564,31 +650,16 @@ struct TideWaveContent: View {
                 hourPosition: hourPosition
             )
             
-            // Draw tick marks at 6am, 12pm, 6pm
+            // Draw bolder tick marks at even hours (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
             Group {
-                // 6am tick
-                let sixAMX = (6.0 / 24.0) * width
-                Path { path in
-                    path.move(to: CGPoint(x: sixAMX, y: centerY - 8))
-                    path.addLine(to: CGPoint(x: sixAMX, y: centerY + 8))
+                ForEach([0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22], id: \.self) { hour in
+                    let tickX = (Double(hour) / 24.0) * width
+                    Path { path in
+                        path.move(to: CGPoint(x: tickX, y: centerY - 10))
+                        path.addLine(to: CGPoint(x: tickX, y: centerY + 10))
+                    }
+                    .stroke(Color.white.opacity(0.7), lineWidth: 2)
                 }
-                .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
-                
-                // 12pm tick
-                let noonTickX = (12.0 / 24.0) * width
-                Path { path in
-                    path.move(to: CGPoint(x: noonTickX, y: centerY - 8))
-                    path.addLine(to: CGPoint(x: noonTickX, y: centerY + 8))
-                }
-                .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
-                
-                // 6pm tick
-                let sixPMX = (18.0 / 24.0) * width
-                Path { path in
-                    path.move(to: CGPoint(x: sixPMX, y: centerY - 8))
-                    path.addLine(to: CGPoint(x: sixPMX, y: centerY + 8))
-                }
-                .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
             }
             
             // Draw sun path curve (sine wave arc) from sunrise to sunset
@@ -778,59 +849,6 @@ struct TideWaveContent: View {
                 }
             }
             
-            // Draw drop lines at sunrise, midday, and sunset
-            if let sunTimes = sunTimes {
-                // Sunrise drop line
-                if let sunriseX = sunriseX {
-                    Path { path in
-                        path.move(to: CGPoint(x: sunriseX, y: 0))
-                        path.addLine(to: CGPoint(x: sunriseX, y: height))
-                    }
-                    .stroke(Color.orange.opacity(0.6), lineWidth: 1)
-                    
-                    // Sunrise icon (sun up)
-                    Image(systemName: "sunrise.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.orange)
-                        .position(x: sunriseX, y: 8)
-                    
-                    // Sunrise time label
-                    Text(sunTimes.sunrise, style: .time)
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                        .position(x: sunriseX, y: height - 15)
-                }
-                
-                // Midday drop line
-                if let noonX = noonX {
-                    Path { path in
-                        path.move(to: CGPoint(x: noonX, y: 0))
-                        path.addLine(to: CGPoint(x: noonX, y: height))
-                    }
-                    .stroke(Color.yellow.opacity(0.6), lineWidth: 1)
-                }
-                
-                // Sunset drop line
-                if let sunsetX = sunsetX {
-                    Path { path in
-                        path.move(to: CGPoint(x: sunsetX, y: 0))
-                        path.addLine(to: CGPoint(x: sunsetX, y: height))
-                    }
-                    .stroke(Color.red.opacity(0.6), lineWidth: 1)
-                    
-                    // Sunset icon (sun down)
-                    Image(systemName: "sunset.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.red)
-                        .position(x: sunsetX, y: 8)
-                    
-                    // Sunset time label
-                    Text(sunTimes.sunset, style: .time)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .position(x: sunsetX, y: height - 15)
-                }
-            }
             
             // Today's events on the timeline
             ForEach(todayEvents) { event in
@@ -902,6 +920,31 @@ struct WeatherTimelineView: View {
                     }
                     .position(x: x, y: weatherY)
                 }
+                
+                // Midnight at the end of the day (24:00)
+                if let midnightData = weatherService.hourlyForecast.first {
+                    let midnightX = width // Position at the end (24:00)
+                    let weatherY = height - 40
+                    
+                    VStack(spacing: 6) {
+                        // Time label - show as "12AM" for midnight at end
+                        Text("12AM")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        // Weather icon
+                        Image(systemName: weatherIconName(for: midnightData.icon))
+                            .font(.system(size: 32))
+                            .foregroundColor(.white)
+                            .frame(width: 40, height: 40)
+                        
+                        // Temperature
+                        Text("\(Int(midnightData.temperature))°")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .position(x: midnightX, y: weatherY)
+                }
             }
         }
         .frame(height: 100)
@@ -945,6 +988,212 @@ struct WeatherTimelineView: View {
     }
 }
     
+
+struct WeatherBackgroundView: View {
+    let weather: WeatherData?
+    let sunTimes: SunTimes?
+    
+    private var isNight: Bool {
+        guard let sunTimes = sunTimes else { return false }
+        let now = Date()
+        return now < sunTimes.sunrise || now > sunTimes.sunset
+    }
+    
+    private var weatherCondition: String {
+        weather?.condition.lowercased() ?? "clear"
+    }
+    
+    private var weatherIcon: String {
+        weather?.icon ?? "01d"
+    }
+    
+    var body: some View {
+        ZStack {
+            // Base gradient based on day/night
+            if isNight {
+                // Night gradient
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.05, green: 0.05, blue: 0.15),
+                        Color(red: 0.1, green: 0.1, blue: 0.2),
+                        Color(red: 0.05, green: 0.05, blue: 0.15)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            } else {
+                // Day gradient
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.4, green: 0.6, blue: 0.9),
+                        Color(red: 0.5, green: 0.7, blue: 0.95),
+                        Color(red: 0.6, green: 0.8, blue: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            
+            // Weather-specific overlays
+            if isNight {
+                // Night weather effects
+                if weatherIcon.contains("09") || weatherIcon.contains("10") || weatherCondition.contains("rain") {
+                    // Rain at night
+                    NightRainView()
+                } else if weatherIcon.contains("11") || weatherCondition.contains("thunder") {
+                    // Thunderstorm at night
+                    NightThunderView()
+                } else if weatherIcon.contains("13") || weatherCondition.contains("snow") {
+                    // Snow at night
+                    NightSnowView()
+                } else {
+                    // Clear/starry night
+                    StarryNightView()
+                }
+            } else {
+                // Day weather effects
+                if weatherIcon.contains("09") || weatherIcon.contains("10") || weatherCondition.contains("rain") {
+                    // Rain during day
+                    DayRainView()
+                } else if weatherIcon.contains("11") || weatherCondition.contains("thunder") {
+                    // Thunderstorm during day
+                    DayThunderView()
+                } else if weatherIcon.contains("13") || weatherCondition.contains("snow") {
+                    // Snow during day
+                    DaySnowView()
+                } else if weatherIcon.contains("02") || weatherIcon.contains("03") || weatherIcon.contains("04") || weatherCondition.contains("cloud") {
+                    // Clouds during day
+                    DayCloudsView()
+                }
+                // Clear day - just the gradient
+            }
+        }
+    }
+}
+
+struct StarryNightView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ForEach(0..<50, id: \.self) { _ in
+                Circle()
+                    .fill(Color.white.opacity(0.6))
+                    .frame(width: CGFloat.random(in: 1...3), height: CGFloat.random(in: 1...3))
+                    .position(
+                        x: CGFloat.random(in: 0...geometry.size.width),
+                        y: CGFloat.random(in: 0...geometry.size.height)
+                    )
+            }
+        }
+    }
+}
+
+struct NightRainView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ForEach(0..<100, id: \.self) { _ in
+                Path { path in
+                    let x = CGFloat.random(in: 0...geometry.size.width)
+                    let y = CGFloat.random(in: 0...geometry.size.height)
+                    path.move(to: CGPoint(x: x, y: y))
+                    path.addLine(to: CGPoint(x: x, y: y + 20))
+                }
+                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+            }
+        }
+    }
+}
+
+struct NightThunderView: View {
+    var body: some View {
+        ZStack {
+            StarryNightView()
+            NightRainView()
+            
+            // Lightning flashes
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .ignoresSafeArea()
+        }
+    }
+}
+
+struct NightSnowView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ForEach(0..<80, id: \.self) { _ in
+                Text("❄")
+                    .font(.system(size: CGFloat.random(in: 10...20)))
+                    .foregroundColor(.white.opacity(0.7))
+                    .position(
+                        x: CGFloat.random(in: 0...geometry.size.width),
+                        y: CGFloat.random(in: 0...geometry.size.height)
+                    )
+            }
+        }
+    }
+}
+
+struct DayRainView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ForEach(0..<150, id: \.self) { _ in
+                Path { path in
+                    let x = CGFloat.random(in: 0...geometry.size.width)
+                    let y = CGFloat.random(in: 0...geometry.size.height)
+                    path.move(to: CGPoint(x: x, y: y))
+                    path.addLine(to: CGPoint(x: x, y: y + 25))
+                }
+                .stroke(Color.blue.opacity(0.4), lineWidth: 1.5)
+            }
+        }
+    }
+}
+
+struct DayThunderView: View {
+    var body: some View {
+        ZStack {
+            DayCloudsView()
+            DayRainView()
+            
+            // Lightning
+            Rectangle()
+                .fill(Color.yellow.opacity(0.15))
+                .ignoresSafeArea()
+        }
+    }
+}
+
+struct DaySnowView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ForEach(0..<100, id: \.self) { _ in
+                Text("❄")
+                    .font(.system(size: CGFloat.random(in: 12...24)))
+                    .foregroundColor(.white.opacity(0.8))
+                    .position(
+                        x: CGFloat.random(in: 0...geometry.size.width),
+                        y: CGFloat.random(in: 0...geometry.size.height)
+                    )
+            }
+        }
+    }
+}
+
+struct DayCloudsView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ForEach(0..<15, id: \.self) { _ in
+                Image(systemName: "cloud.fill")
+                    .font(.system(size: CGFloat.random(in: 80...150)))
+                    .foregroundColor(.white.opacity(0.3))
+                    .position(
+                        x: CGFloat.random(in: 0...geometry.size.width),
+                        y: CGFloat.random(in: 0...geometry.size.height * 0.6)
+                    )
+            }
+        }
+    }
+}
 
 struct ClockView: View {
     @State private var currentTime = Date()

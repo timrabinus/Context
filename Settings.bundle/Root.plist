@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>StringsTable</key>
+	<string>Root</string>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Sleep Schedule</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSTimeIntervalDatePickerSpecifier</string>
+			<key>Title</key>
+			<string>Wake Time</string>
+			<key>Key</key>
+			<string>wakeTime</string>
+			<key>DefaultValue</key>
+			<real>25200</real>
+			<key>MinimumValue</key>
+			<real>0</real>
+			<key>MaximumValue</key>
+			<real>86400</real>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSTimeIntervalDatePickerSpecifier</string>
+			<key>Title</key>
+			<string>Sleep Time</string>
+			<key>Key</key>
+			<string>sleepTime</string>
+			<key>DefaultValue</key>
+			<real>82800</real>
+			<key>MinimumValue</key>
+			<real>0</real>
+			<key>MaximumValue</key>
+			<real>86400</real>
+		</dict>
+	</array>
+</dict>
+</plist>
