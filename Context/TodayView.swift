@@ -83,14 +83,8 @@ struct TodayView: View {
     private func loadData() async {
         let coordinate = locationService.coordinate
         
-        // Calculate sun and moon times synchronously (they're not async)
+        // Calculate sun times synchronously (not async)
         sunService.calculateSunTimes(
-            for: Date(),
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude
-        )
-        
-        moonService.calculateMoonTimes(
             for: Date(),
             latitude: coordinate.latitude,
             longitude: coordinate.longitude
@@ -114,6 +108,13 @@ struct TodayView: View {
             
             group.addTask {
                 await tideService.fetchTides(
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
+                )
+            }
+            
+            group.addTask {
+                await moonService.fetchMoonTimes(
                     latitude: coordinate.latitude,
                     longitude: coordinate.longitude
                 )
