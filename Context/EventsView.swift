@@ -11,6 +11,7 @@ struct EventsView: View {
     @EnvironmentObject private var calendarService: CalendarService
     @State private var selectedEvent: CalendarEvent?
     @FocusState private var focusedEventId: String?
+    private let headerOverlayHeight: CGFloat = 36
     
     private var calendarColorMap: [String: Color] {
         Dictionary(uniqueKeysWithValues: CalendarSource.predefinedCalendars.map { ($0.id, $0.color) })
@@ -40,8 +41,7 @@ struct EventsView: View {
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateStyle = .full
-        formatter.timeStyle = .none
+        formatter.dateFormat = "EEEE, d MMMM"
         return formatter.string(from: date)
     }
     
@@ -57,6 +57,13 @@ struct EventsView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
+    }
+
+    private func headerColor(for date: Date) -> Color {
+        if Calendar.current.isDateInWeekend(date) {
+            return Color(red: 0.50, green: 0.60, blue: 0.78)
+        }
+        return .primary
     }
     
     var body: some View {
@@ -79,7 +86,7 @@ struct EventsView: View {
                             ForEach(groupedEvents, id: \.date) { dateGroup in
                                 Section(header: Text(formatDate(dateGroup.date))
                                     .font(.headline)
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(headerColor(for: dateGroup.date))
                                     .textCase(nil)
                                     .padding(.top, 8)
                                     .padding(.bottom, 12)) {
@@ -97,6 +104,7 @@ struct EventsView: View {
                                 }
                             }
                         }
+                        .padding(.top, headerOverlayHeight)
                         .padding(.leading, 20)
                         .padding(.trailing, 20)
                         .onChange(of: focusedEventId) { newValue in

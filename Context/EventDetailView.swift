@@ -12,6 +12,7 @@ struct EventDetailView: View {
     let calendarColor: Color
     let calendarName: String?
     let width: CGFloat
+    private let contentPadding: CGFloat = 16
     
     var body: some View {
         let hasRouteInNotes = event?.description?
@@ -40,6 +41,7 @@ struct EventDetailView: View {
                 if let selectedEvent = event, shouldShowMap {
                     EventMapView(event: selectedEvent)
                         .frame(width: (width - 20) / 2)
+                        .padding(.top, contentPadding)
                         .padding(.trailing, 30)
                 } else {
                     // Empty space when no location
