@@ -10,23 +10,34 @@ import SwiftUI
 struct EventDetailView: View {
     let event: CalendarEvent?
     let calendarColor: Color
+    let calendarName: String?
     let width: CGFloat
     
     var body: some View {
+        let hasRouteInNotes = event?.description?
+            .lowercased()
+            .contains("from:") == true &&
+            event?.description?
+            .lowercased()
+            .contains("to:") == true
+        let shouldShowMap = (event?.location?.isEmpty == false) || hasRouteInNotes
+        
         VStack(alignment: .leading, spacing: 0) {
             // Event Header spanning both columns
-            EventHeaderView(event: event)
+            EventHeaderView(
+                event: event,
+                calendarName: calendarName,
+                calendarColor: calendarColor
+            )
             
             // Notes and Map in columns below
-            HStack(spacing: 20) {
+            HStack(alignment: .top, spacing: 20) {
                 // Notes column
                 EventNotesView(event: event)
                     .frame(width: (width - 20) / 2)
                 
-                // Map View - only show if event has location
-                if let selectedEvent = event,
-                   let location = selectedEvent.location,
-                   !location.isEmpty {
+                // Map View - show when location or From/To notes exist
+                if let selectedEvent = event, shouldShowMap {
                     EventMapView(event: selectedEvent)
                         .frame(width: (width - 20) / 2)
                         .padding(.trailing, 30)
@@ -45,12 +56,28 @@ struct EventDetailView: View {
 struct EventNotesView: View {
     let event: CalendarEvent?
     
+    private func notesWithoutDirections(_ notes: String?) -> String? {
+        guard let notes, !notes.isEmpty else {
+            return nil
+        }
+        
+        let pattern = "(?is)(^|\\n)\\s*(from|to)\\s*:\\s*.*?(?=\\n\\s*(from|to)\\s*:|\\n\\s*\\n|$)"
+        let range = NSRange(notes.startIndex..<notes.endIndex, in: notes)
+        let stripped = (try? NSRegularExpression(pattern: pattern))?
+            .stringByReplacingMatches(in: notes, range: range, withTemplate: "") ?? notes
+        
+        let joined = stripped
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return joined.isEmpty ? nil : joined
+    }
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let event = event {
                     // Notes
-                    if let description = event.description, !description.isEmpty {
+                    if let description = notesWithoutDirections(event.description) {
                         Text(description)
                             .font(.body)
                     } else {
@@ -83,6 +110,7 @@ struct EventNotesView: View {
             location: nil
         ),
         calendarColor: .blue,
+        calendarName: "Family",
         width: 800
     )
 }

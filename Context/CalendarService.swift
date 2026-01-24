@@ -84,8 +84,18 @@ class CalendarService: ObservableObject {
         var events: [CalendarEvent] = []
         var currentEvent: [String: String] = [:]
         
-        let lines = icalString.components(separatedBy: .newlines)
+        let rawLines = icalString.components(separatedBy: .newlines)
+        let lines = unfoldLines(rawLines)
         var inEvent = false
+        var lastPropertyName: String?
+        let knownProperties: Set<String> = [
+            "DTSTART",
+            "DTEND",
+            "UID",
+            "SUMMARY",
+            "DESCRIPTION",
+            "LOCATION"
+        ]
         
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -98,7 +108,16 @@ class CalendarService: ObservableObject {
                     events.append(event)
                 }
                 inEvent = false
+                lastPropertyName = nil
             } else if inEvent && !trimmed.isEmpty {
+                if trimmed.firstIndex(of: ":") == nil {
+                    if lastPropertyName == "DESCRIPTION",
+                       let existing = currentEvent["DESCRIPTION"] {
+                        currentEvent["DESCRIPTION"] = existing + "\n" + trimmed
+                    }
+                    continue
+                }
+                
                 // Handle property parameters (e.g., DTSTART;VALUE=DATE:20240101)
                 let colonIndex = trimmed.firstIndex(of: ":")
                 guard let colonIndex = colonIndex else { continue }
@@ -108,11 +127,85 @@ class CalendarService: ObservableObject {
                 
                 // Extract the property name (before semicolon if present)
                 let propertyName = propertyPart.components(separatedBy: ";").first ?? propertyPart
+                if lastPropertyName == "DESCRIPTION",
+                   !knownProperties.contains(propertyName) {
+                    let appendedLine = "\(propertyName):\(valuePart)"
+                    if let existing = currentEvent["DESCRIPTION"] {
+                        currentEvent["DESCRIPTION"] = existing + "\n" + appendedLine
+                    } else {
+                        currentEvent["DESCRIPTION"] = appendedLine
+                    }
+                    continue
+                }
+                
                 currentEvent[propertyName] = valuePart
+                lastPropertyName = propertyName
             }
         }
         
         return events
+    }
+    
+    private func unfoldLines(_ lines: [String]) -> [String] {
+        var unfolded: [String] = []
+        
+        for line in lines {
+            if let last = unfolded.last, line.hasPrefix(" ") || line.hasPrefix("\t") {
+                unfolded[unfolded.count - 1] = last + line.dropFirst()
+            } else {
+                unfolded.append(line)
+            }
+        }
+        
+        return unfolded
+    }
+    
+    private func unescapeICalText(_ text: String) -> String {
+        var result = ""
+        var iterator = text.makeIterator()
+        
+        while let character = iterator.next() {
+            if character == "\\" {
+                guard let next = iterator.next() else { break }
+                switch next {
+                case "n", "N":
+                    result.append("\n")
+                case ",":
+                    result.append(",")
+                case ";":
+                    result.append(";")
+                case "\\":
+                    result.append("\\")
+                default:
+                    result.append(next)
+                }
+            } else {
+                result.append(character)
+            }
+        }
+        
+        return result
+    }
+    
+    private func normalizeICalText(_ text: String) -> String {
+        var normalized = text
+        
+        for _ in 0..<2 {
+            let unescaped = unescapeICalText(normalized)
+            if unescaped == normalized {
+                break
+            }
+            normalized = unescaped
+        }
+        
+        normalized = normalized
+            .replacingOccurrences(of: "\\n", with: "\n")
+            .replacingOccurrences(of: "\\N", with: "\n")
+            .replacingOccurrences(of: "\\,", with: ",")
+            .replacingOccurrences(of: "\\;", with: ";")
+            .replacingOccurrences(of: "\\\\", with: "\\")
+        
+        return normalized
     }
     
     private func createEvent(from dictionary: [String: String], calendarId: String) -> CalendarEvent? {
@@ -122,8 +215,8 @@ class CalendarService: ObservableObject {
         
         let uid = dictionary["UID"] ?? dtStart
         let title = dictionary["SUMMARY"] ?? "Untitled Event"
-        let description = dictionary["DESCRIPTION"]
-        let location = dictionary["LOCATION"]
+        let description = dictionary["DESCRIPTION"].map { normalizeICalText($0) }
+        let location = dictionary["LOCATION"].map { normalizeICalText($0) }
         
         // Log location field if present
         if let location = location {

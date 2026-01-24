@@ -61,4 +61,5 @@ struct DateTimeHeader: View {
 
 #Preview {
     ContentView()
+        .environmentObject(CalendarService())
 }

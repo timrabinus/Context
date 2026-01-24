@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct ContextApp: App {
+    @StateObject private var calendarService = CalendarService()
+    
     init() {
         // Register default values for settings
         let defaults = UserDefaults.standard
@@ -23,6 +25,10 @@ struct ContextApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(calendarService)
+                .task {
+                    await calendarService.fetchCalendars()
+                }
         }
     }
 }

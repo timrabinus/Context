@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct EventsView: View {
-    @StateObject private var calendarService = CalendarService()
+    @EnvironmentObject private var calendarService: CalendarService
     @State private var selectedEvent: CalendarEvent?
     @FocusState private var focusedEventId: String?
     
@@ -16,8 +16,16 @@ struct EventsView: View {
         Dictionary(uniqueKeysWithValues: CalendarSource.predefinedCalendars.map { ($0.id, $0.color) })
     }
     
+    private var calendarNameMap: [String: String] {
+        Dictionary(uniqueKeysWithValues: CalendarSource.predefinedCalendars.map { ($0.id, $0.name) })
+    }
+    
     private func color(for calendarId: String) -> Color {
         calendarColorMap[calendarId] ?? .gray
+    }
+    
+    private func name(for calendarId: String) -> String? {
+        calendarNameMap[calendarId]
     }
     
     private var groupedEvents: [(date: Date, events: [CalendarEvent])] {
@@ -117,18 +125,17 @@ struct EventsView: View {
                     EventDetailView(
                         event: selectedEvent,
                         calendarColor: selectedEvent.map { color(for: $0.calendarId) } ?? .gray,
+                        calendarName: selectedEvent.flatMap { name(for: $0.calendarId) },
                         width: detailGeometry.size.width - 30
                     )
                     .padding(.trailing, 30)
                 }
             }
         }
-        .task {
-            await calendarService.fetchCalendars()
-        }
     }
 }
 
 #Preview {
     EventsView()
+        .environmentObject(CalendarService())
 }

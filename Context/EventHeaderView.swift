@@ -9,6 +9,8 @@ import SwiftUI
 
 struct EventHeaderView: View {
     let event: CalendarEvent?
+    let calendarName: String?
+    let calendarColor: Color
     
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -24,15 +26,43 @@ struct EventHeaderView: View {
                     .font(.largeTitle)
                     .fontWeight(.bold)
                 
-                // Start to End
+                // Start to End + Calendar
                 if let endDate = event.endDate {
-                    Text("\(formatTime(event.startDate)) to \(formatTime(endDate))")
-                        .font(.body)
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 10) {
+                        Text("\(formatTime(event.startDate)) to \(formatTime(endDate))")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer(minLength: 12)
+                        
+                        if let calendarName = calendarName {
+                            Rectangle()
+                                .fill(calendarColor)
+                                .frame(width: 4, height: 14)
+                            
+                            Text(calendarName)
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 } else {
-                    Text(formatTime(event.startDate))
-                        .font(.body)
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 10) {
+                        Text(formatTime(event.startDate))
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer(minLength: 12)
+                        
+                        if let calendarName = calendarName {
+                            Rectangle()
+                                .fill(calendarColor)
+                                .frame(width: 4, height: 14)
+                            
+                            Text(calendarName)
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
             }
         }
@@ -51,6 +81,8 @@ struct EventHeaderView: View {
             endDate: Calendar.current.date(byAdding: .hour, value: 2, to: Date()),
             description: "This is a sample event description.",
             location: nil
-        )
+        ),
+        calendarName: "Family",
+        calendarColor: .blue
     )
 }
