@@ -8,7 +8,7 @@
 import Foundation
 import Combine
 
-struct WeatherData {
+struct WeatherData: Codable {
     let temperature: Double
     let condition: String
     let description: String
@@ -17,7 +17,7 @@ struct WeatherData {
     let icon: String
 }
 
-struct HourlyWeatherData {
+struct HourlyWeatherData: Codable {
     let time: Date
     let temperature: Double
     let icon: String
@@ -75,12 +75,28 @@ class WeatherService: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     
-    // Note: You'll need to add your OpenWeatherMap API key
-    // Get one free at https://openweathermap.org/api
-    private let apiKey = "YOUR_API_KEY_HERE"
+    private struct WeatherCache: Codable {
+        let timestamp: Date
+        let data: WeatherData
+    }
+    
+    private struct HourlyForecastCache: Codable {
+        let timestamp: Date
+        let data: [HourlyWeatherData]
+        let dailyIcons: [String: String]
+        let dailyTemps: [String: Double]
+    }
+    
+    private let apiKey = WeatherService.deobfuscatedApiKey()
     private let baseURL = "https://api.openweathermap.org/data/2.5/weather"
     private let forecastURL = "https://api.openweathermap.org/data/2.5/forecast"
     private let dailyIconCacheKey = "dailyForecastIconCache"
+    private let weatherCacheKey = "weatherCache"
+    private let hourlyForecastCacheKey = "hourlyForecastCache"
+    private let dailyCallCountKey = "openWeatherCallCount"
+    private let dailyCallDateKey = "openWeatherCallDate"
+    private let refreshInterval: TimeInterval = 15 * 60
+    private let dailyCallLimit = 1000
     private let dayKeyFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar.current
@@ -92,11 +108,19 @@ class WeatherService: ObservableObject {
 
     init() {
         loadDailyIconCache()
+        loadWeatherCache()
+        loadHourlyForecastCache()
     }
     
     func fetchWeather(latitude: Double, longitude: Double) async {
         isLoading = true
         error = nil
+        
+        if let cached = readWeatherCache(), !isRefreshNeeded(since: cached.timestamp) {
+            self.weather = cached.data
+            self.isLoading = false
+            return
+        }
         
         // If no API key is set, use mock data for development
         guard apiKey != "YOUR_API_KEY_HERE" else {
@@ -114,36 +138,70 @@ class WeatherService: ObservableObject {
             return
         }
         
-        let urlString = "\(baseURL)?lat=\(latitude)&lon=\(longitude)&appid=\(apiKey)&units=imperial"
+        guard canMakeNetworkCall() else {
+            error = "Daily weather request limit reached"
+            logError(error ?? "Daily weather request limit reached")
+            if let cached = readWeatherCache() {
+                self.weather = cached.data
+            }
+            isLoading = false
+            return
+        }
+        
+        let urlString = "\(baseURL)?lat=\(latitude)&lon=\(longitude)&appid=\(apiKey)&units=metric"
         
         guard let url = URL(string: urlString) else {
             error = "Invalid URL"
+            logError(error ?? "Invalid URL")
             isLoading = false
             return
         }
         
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let response = try JSONDecoder().decode(WeatherResponse.self, from: data)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                let body = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+                error = "OpenWeather current weather error: HTTP \(httpResponse.statusCode)"
+                logError("\(error ?? "OpenWeather current weather error") | \(body)")
+                if let cached = readWeatherCache() {
+                    self.weather = cached.data
+                }
+                isLoading = false
+                return
+            }
+            let weatherResponse = try JSONDecoder().decode(WeatherResponse.self, from: data)
             
-            if let weatherInfo = response.weather.first {
-                self.weather = WeatherData(
-                    temperature: response.main.temp,
+            if let weatherInfo = weatherResponse.weather.first {
+                let weather = WeatherData(
+                    temperature: weatherResponse.main.temp,
                     condition: weatherInfo.main,
                     description: weatherInfo.description,
-                    humidity: response.main.humidity,
-                    windSpeed: response.wind.speed,
+                    humidity: weatherResponse.main.humidity,
+                    windSpeed: weatherResponse.wind.speed,
                     icon: weatherInfo.icon
                 )
+                self.weather = weather
+                writeWeatherCache(weather)
             }
         } catch {
             self.error = "Failed to fetch weather: \(error.localizedDescription)"
+            logError(self.error ?? "Failed to fetch weather")
+            if let cached = readWeatherCache() {
+                self.weather = cached.data
+            }
         }
         
         isLoading = false
     }
     
     func fetchHourlyForecast(latitude: Double, longitude: Double) async {
+        if let cached = readHourlyForecastCache(), !isRefreshNeeded(since: cached.timestamp) {
+            self.hourlyForecast = cached.data
+            self.dailyForecastIcons = cached.dailyIcons
+            self.dailyForecastTemps = cached.dailyTemps
+            return
+        }
+        
         // If no API key is set, use mock data for development
         guard apiKey != "YOUR_API_KEY_HERE" else {
             // Mock hourly forecast data for 24 hours
@@ -191,16 +249,39 @@ class WeatherService: ObservableObject {
             return
         }
         
-        let urlString = "\(forecastURL)?lat=\(latitude)&lon=\(longitude)&appid=\(apiKey)&units=imperial"
+        guard canMakeNetworkCall() else {
+            error = "Daily forecast request limit reached"
+            logError(error ?? "Daily forecast request limit reached")
+            if let cached = readHourlyForecastCache() {
+                self.hourlyForecast = cached.data
+                self.dailyForecastIcons = cached.dailyIcons
+                self.dailyForecastTemps = cached.dailyTemps
+            }
+            return
+        }
+        
+        let urlString = "\(forecastURL)?lat=\(latitude)&lon=\(longitude)&appid=\(apiKey)&units=metric"
         
         guard let url = URL(string: urlString) else {
             error = "Invalid URL"
+            logError(error ?? "Invalid URL")
             return
         }
         
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let response = try JSONDecoder().decode(HourlyForecastResponse.self, from: data)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                let body = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+                error = "OpenWeather forecast error: HTTP \(httpResponse.statusCode)"
+                logError("\(error ?? "OpenWeather forecast error") | \(body)")
+                if let cached = readHourlyForecastCache() {
+                    self.hourlyForecast = cached.data
+                    self.dailyForecastIcons = cached.dailyIcons
+                    self.dailyForecastTemps = cached.dailyTemps
+                }
+                return
+            }
+            let forecastResponse = try JSONDecoder().decode(HourlyForecastResponse.self, from: data)
             
             // Get 24 hours of forecast data for timeline
             let now = Date()
@@ -212,7 +293,7 @@ class WeatherService: ObservableObject {
             // Filter to get next 24 hours for the hourly timeline
             let next24Hours = calendar.date(byAdding: .hour, value: 24, to: roundedNow) ?? now
             
-            let forecastItems = response.list.filter { item in
+            let forecastItems = forecastResponse.list.filter { item in
                 let itemDate = Date(timeIntervalSince1970: item.dt)
                 return itemDate >= roundedNow && itemDate <= next24Hours
             }
@@ -242,9 +323,20 @@ class WeatherService: ObservableObject {
                 }
             }
             self.hourlyForecast = hourlyForecast
-            updateDailyForecastIcons(from: response.list, now: now)
+            updateDailyForecastIcons(from: forecastResponse.list, now: now)
+            writeHourlyForecastCache(
+                hourlyForecast,
+                dailyIcons: dailyForecastIcons,
+                dailyTemps: dailyForecastTemps
+            )
         } catch {
             self.error = "Failed to fetch hourly forecast: \(error.localizedDescription)"
+            logError(self.error ?? "Failed to fetch hourly forecast")
+            if let cached = readHourlyForecastCache() {
+                self.hourlyForecast = cached.data
+                self.dailyForecastIcons = cached.dailyIcons
+                self.dailyForecastTemps = cached.dailyTemps
+            }
         }
     }
 
@@ -322,5 +414,95 @@ class WeatherService: ObservableObject {
     private func saveDailyIconCache() {
         guard let data = try? JSONEncoder().encode(dailyIconCache) else { return }
         UserDefaults.standard.set(data, forKey: dailyIconCacheKey)
+    }
+    
+    private func loadWeatherCache() {
+        guard let cached = readWeatherCache() else { return }
+        weather = cached.data
+    }
+    
+    private func loadHourlyForecastCache() {
+        guard let cached = readHourlyForecastCache() else { return }
+        hourlyForecast = cached.data
+        dailyForecastIcons = cached.dailyIcons
+        dailyForecastTemps = cached.dailyTemps
+    }
+    
+    private func readWeatherCache() -> WeatherCache? {
+        let defaults = UserDefaults.standard
+        guard let data = defaults.data(forKey: weatherCacheKey) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(WeatherCache.self, from: data)
+    }
+    
+    private func writeWeatherCache(_ weather: WeatherData) {
+        let cache = WeatherCache(timestamp: Date(), data: weather)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(cache) else { return }
+        UserDefaults.standard.set(data, forKey: weatherCacheKey)
+    }
+    
+    private func readHourlyForecastCache() -> HourlyForecastCache? {
+        let defaults = UserDefaults.standard
+        guard let data = defaults.data(forKey: hourlyForecastCacheKey) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(HourlyForecastCache.self, from: data)
+    }
+    
+    private func writeHourlyForecastCache(
+        _ forecast: [HourlyWeatherData],
+        dailyIcons: [String: String],
+        dailyTemps: [String: Double]
+    ) {
+        let cache = HourlyForecastCache(
+            timestamp: Date(),
+            data: forecast,
+            dailyIcons: dailyIcons,
+            dailyTemps: dailyTemps
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(cache) else { return }
+        UserDefaults.standard.set(data, forKey: hourlyForecastCacheKey)
+    }
+    
+    private func isRefreshNeeded(since timestamp: Date) -> Bool {
+        Date().timeIntervalSince(timestamp) >= refreshInterval
+    }
+    
+    private func canMakeNetworkCall() -> Bool {
+        let defaults = UserDefaults.standard
+        let today = Calendar.current.startOfDay(for: Date())
+        
+        let storedDate = defaults.object(forKey: dailyCallDateKey) as? Date
+        if storedDate == nil || storedDate != today {
+            defaults.set(today, forKey: dailyCallDateKey)
+            defaults.set(0, forKey: dailyCallCountKey)
+        }
+        
+        let count = defaults.integer(forKey: dailyCallCountKey)
+        guard count < dailyCallLimit else {
+            return false
+        }
+        
+        defaults.set(count + 1, forKey: dailyCallCountKey)
+        return true
+    }
+    
+    private func logError(_ message: String) {
+        print("WeatherService: \(message)")
+    }
+    
+    private static func deobfuscatedApiKey() -> String {
+        let mask: UInt8 = 0x5A
+        let encoded: [UInt8] = [
+            110, 110, 111, 108, 99, 108, 63, 63, 111, 110, 109, 62, 63, 59, 57, 56,
+            104, 104, 57, 57, 109, 104, 99, 104, 107, 105, 99, 63, 109, 59, 56, 109
+        ]
+        let chars = encoded.map { UInt8($0) ^ mask }
+        return String(bytes: chars, encoding: .utf8) ?? "YOUR_API_KEY_HERE"
     }
 }

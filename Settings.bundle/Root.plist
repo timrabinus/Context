@@ -10,6 +10,32 @@
 			<key>Type</key>
 			<string>PSGroupSpecifier</string>
 			<key>Title</key>
+			<string>Location</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Weather Location</string>
+			<key>Key</key>
+			<string>selectedLocation</string>
+			<key>DefaultValue</key>
+			<string>piha</string>
+			<key>Titles</key>
+			<array>
+				<string>Auckland, NZ</string>
+				<string>Piha, NZ</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<string>auckland</string>
+				<string>piha</string>
+			</array>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
 			<string>Sleep Schedule</string>
 		</dict>
 		<dict>

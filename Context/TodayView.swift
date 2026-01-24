@@ -65,8 +65,8 @@ struct TodayView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task {
-            await loadData()
+        .task(id: locationService.selectedLocationId) {
+            await refreshLoop()
         }
     }
     
@@ -122,6 +122,15 @@ struct TodayView: View {
             group.addTask {
                 await calendarService.fetchCalendars(for: Date())
             }
+        }
+    }
+    
+    private func refreshLoop() async {
+        let refreshInterval: UInt64 = 15 * 60 * 1_000_000_000
+        
+        while !Task.isCancelled {
+            await loadData()
+            try? await Task.sleep(nanoseconds: refreshInterval)
         }
     }
 }

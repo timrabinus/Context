@@ -10,6 +10,7 @@
 		5B959C312F1376760013A05D /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 5B959C302F1376760013A05D /* Settings.bundle */; };
 		5B959C401A2B3C4D0013A05D /* RouteParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B959C421A2B3C4D0013A05D /* RouteParserTests.swift */; };
 		5B959C411A2B3C4D0013A05D /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5B959C441A2B3C4D0013A05D /* XCTest.framework */; };
+		5B9A6A2F2B1C4D0013A05D /* WeatherServiceIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B9A6A2E2F2B1C4D0013A05D /* WeatherServiceIntegrationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +29,7 @@
 		5B959C421A2B3C4D0013A05D /* RouteParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteParserTests.swift; sourceTree = "<group>"; };
 		5B959C431A2B3C4D0013A05D /* ContextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ContextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5B959C441A2B3C4D0013A05D /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		5B9A6A2E2F2B1C4D0013A05D /* WeatherServiceIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherServiceIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -81,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				5B959C421A2B3C4D0013A05D /* RouteParserTests.swift */,
+				5B9A6A2E2F2B1C4D0013A05D /* WeatherServiceIntegrationTests.swift */,
 			);
 			path = ContextTests;
 			sourceTree = "<group>";
@@ -205,6 +208,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5B959C401A2B3C4D0013A05D /* RouteParserTests.swift in Sources */,
+				5B9A6A2F2B1C4D0013A05D /* WeatherServiceIntegrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
