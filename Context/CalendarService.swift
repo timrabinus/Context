@@ -39,11 +39,16 @@ class CalendarService: ObservableObject {
         var allEvents: [CalendarEvent] = []
         var errors: [String] = []
         
+        let calendar = Calendar.current
+        let monthInterval = calendar.dateInterval(of: .month, for: date)
+        let monthStart = monthInterval?.start ?? date
+        let monthEnd = monthInterval?.end ?? date
+        
         // Fetch all calendars concurrently
         await withTaskGroup(of: [CalendarEvent]?.self) { group in
             for calendar in calendars {
                 group.addTask {
-                    await self.fetchCalendar(calendar: calendar)
+                    await self.fetchCalendar(calendar: calendar, monthStart: monthStart, monthEnd: monthEnd)
                 }
             }
             
@@ -57,12 +62,8 @@ class CalendarService: ObservableObject {
         }
         
         // Sort all events by date
-        let calendar = Calendar.current
-        let monthInterval = calendar.dateInterval(of: .month, for: date)
-        let monthStart = monthInterval?.start ?? date
-        let monthEnd = monthInterval?.end ?? date
         let monthEvents = allEvents
-            .filter { $0.startDate >= monthStart && $0.startDate < monthEnd }
+            .filter { eventOverlapsRange($0, start: monthStart, end: monthEnd) }
             .sorted { $0.startDate < $1.startDate }
         
         events = monthEvents
@@ -93,7 +94,7 @@ class CalendarService: ObservableObject {
         }
     }
     
-    private func fetchCalendar(calendar: CalendarSource) async -> [CalendarEvent]? {
+    private func fetchCalendar(calendar: CalendarSource, monthStart: Date, monthEnd: Date) async -> [CalendarEvent]? {
         // Convert webcal:// to https://
         let httpsURL = calendar.url.replacingOccurrences(of: "webcal://", with: "https://")
         
@@ -104,7 +105,7 @@ class CalendarService: ObservableObject {
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             if let icalString = String(data: data, encoding: .utf8) {
-                return parseICalendar(icalString, calendarId: calendar.id)
+                return parseICalendar(icalString, calendarId: calendar.id, monthStart: monthStart, monthEnd: monthEnd)
             }
         } catch {
             // Silently fail individual calendars
@@ -114,7 +115,7 @@ class CalendarService: ObservableObject {
         return nil
     }
     
-    private func parseICalendar(_ icalString: String, calendarId: String) -> [CalendarEvent] {
+    private func parseICalendar(_ icalString: String, calendarId: String, monthStart: Date, monthEnd: Date) -> [CalendarEvent] {
         var events: [CalendarEvent] = []
         var currentEvent: [String: String] = [:]
         
@@ -128,7 +129,8 @@ class CalendarService: ObservableObject {
             "UID",
             "SUMMARY",
             "DESCRIPTION",
-            "LOCATION"
+            "LOCATION",
+            "RRULE"
         ]
         
         for line in lines {
@@ -138,9 +140,8 @@ class CalendarService: ObservableObject {
                 inEvent = true
                 currentEvent = [:]
             } else if trimmed == "END:VEVENT" {
-                if let event = createEvent(from: currentEvent, calendarId: calendarId) {
-                    events.append(event)
-                }
+                let createdEvents = createEvents(from: currentEvent, calendarId: calendarId, monthStart: monthStart, monthEnd: monthEnd)
+                events.append(contentsOf: createdEvents)
                 inEvent = false
                 lastPropertyName = nil
             } else if inEvent && !trimmed.isEmpty {
@@ -242,9 +243,9 @@ class CalendarService: ObservableObject {
         return normalized
     }
     
-    private func createEvent(from dictionary: [String: String], calendarId: String) -> CalendarEvent? {
+    private func createEvents(from dictionary: [String: String], calendarId: String, monthStart: Date, monthEnd: Date) -> [CalendarEvent] {
         guard let dtStart = dictionary["DTSTART"] else {
-            return nil
+            return []
         }
         
         let uid = dictionary["UID"] ?? dtStart
@@ -265,7 +266,7 @@ class CalendarService: ObservableObject {
         let startDate = parseDate(from: dtStart)
         let endDate = dtEnd != nil ? parseDate(from: dtEnd!) : nil
         
-        return CalendarEvent(
+        let baseEvent = CalendarEvent(
             id: "\(calendarId)-\(uid)",
             calendarId: calendarId,
             title: title,
@@ -273,6 +274,17 @@ class CalendarService: ObservableObject {
             endDate: endDate,
             description: description,
             location: location
+        )
+        
+        guard let rrule = dictionary["RRULE"] else {
+            return [baseEvent]
+        }
+        
+        return expandRecurringEvents(
+            baseEvent: baseEvent,
+            rrule: rrule,
+            monthStart: monthStart,
+            monthEnd: monthEnd
         )
     }
     
@@ -304,6 +316,448 @@ class CalendarService: ObservableObject {
         
         // Fallback to current date
         return Date()
+    }
+
+    // Recurrence gaps:
+    // - EXDATE/EXRULE and RDATE are not applied.
+    // - BYSETPOS, BYWEEKNO, BYYEARDAY are not supported.
+    // - BYHOUR/BYMINUTE/BYSECOND are not supported (event time from DTSTART).
+    // - WKST is ignored (uses the system calendar week start).
+    private func expandRecurringEvents(
+        baseEvent: CalendarEvent,
+        rrule: String,
+        monthStart: Date,
+        monthEnd: Date
+    ) -> [CalendarEvent] {
+        let rule = parseRRule(rrule)
+        let calendar = Calendar.current
+        let startDate = baseEvent.startDate
+        let duration = baseEvent.endDate.map { $0.timeIntervalSince(startDate) } ?? 0
+        let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: startDate)
+        let interval = max(rule.interval, 1)
+        var occurrences: [CalendarEvent] = []
+        var remainingCount = rule.count ?? Int.max
+        
+        func addOccurrence(_ occurrenceStart: Date) {
+            if remainingCount <= 0 { return }
+            if occurrenceStart < startDate { return }
+            if let until = rule.until, occurrenceStart > until { return }
+            
+            let occurrenceEnd = duration > 0 ? occurrenceStart.addingTimeInterval(duration) : baseEvent.endDate
+            if !occurrenceOverlaps(occurrenceStart: occurrenceStart, occurrenceEnd: occurrenceEnd, monthStart: monthStart, monthEnd: monthEnd) {
+                return
+            }
+            
+            let occurrenceId = "\(baseEvent.id)-\(dayKey(for: occurrenceStart))"
+            let occurrence = CalendarEvent(
+                id: occurrenceId,
+                calendarId: baseEvent.calendarId,
+                title: baseEvent.title,
+                startDate: occurrenceStart,
+                endDate: occurrenceEnd,
+                description: baseEvent.description,
+                location: baseEvent.location
+            )
+            
+            occurrences.append(occurrence)
+            remainingCount -= 1
+        }
+        
+        switch rule.frequency {
+        case "DAILY":
+            let daysBetween = calendar.dateComponents([.day], from: calendar.startOfDay(for: startDate), to: calendar.startOfDay(for: monthStart)).day ?? 0
+            let offset = max(0, daysBetween)
+            let remainder = offset % interval
+            let firstOffset = remainder == 0 ? offset : offset + (interval - remainder)
+            
+            var current = calendar.date(byAdding: .day, value: firstOffset, to: startDate) ?? startDate
+            while current < monthEnd && remainingCount > 0 {
+                addOccurrence(current)
+                current = calendar.date(byAdding: .day, value: interval, to: current) ?? current.addingTimeInterval(86400)
+            }
+            
+        case "WEEKLY":
+            let byDays = rule.byDays.isEmpty
+                ? [calendar.component(.weekday, from: startDate)]
+                : rule.byDays
+            
+            let startWeek = calendar.dateInterval(of: .weekOfYear, for: startDate)?.start ?? startDate
+            let targetWeek = calendar.dateInterval(of: .weekOfYear, for: monthStart)?.start ?? monthStart
+            let weeksBetween = calendar.dateComponents([.weekOfYear], from: startWeek, to: targetWeek).weekOfYear ?? 0
+            let startOffset = max(0, weeksBetween)
+            let remainder = startOffset % interval
+            var weekOffset = remainder == 0 ? startOffset : startOffset + (interval - remainder)
+            
+            while remainingCount > 0 {
+                guard let weekStart = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: startWeek) else {
+                    break
+                }
+                
+                if weekStart >= monthEnd {
+                    break
+                }
+                
+                if let until = rule.until, weekStart > until {
+                    break
+                }
+                
+                for weekday in byDays {
+                    let dayOffset = (weekday - calendar.firstWeekday + 7) % 7
+                    guard let occurrenceDay = calendar.date(byAdding: .day, value: dayOffset, to: weekStart),
+                          let occurrenceStart = calendar.date(
+                            bySettingHour: timeComponents.hour ?? 0,
+                            minute: timeComponents.minute ?? 0,
+                            second: timeComponents.second ?? 0,
+                            of: occurrenceDay
+                          ) else {
+                        continue
+                    }
+                    
+                    addOccurrence(occurrenceStart)
+                    if remainingCount <= 0 {
+                        break
+                    }
+                }
+                
+                weekOffset += interval
+            }
+            
+        case "MONTHLY":
+            let byMonthDays = rule.byMonthDays
+            let byDays = rule.byDays
+            let byDayOrdinals = rule.byDayOrdinals
+            
+            let startMonth = calendar.dateInterval(of: .month, for: startDate)?.start ?? startDate
+            let targetMonth = calendar.dateInterval(of: .month, for: monthStart)?.start ?? monthStart
+            let monthsBetween = calendar.dateComponents([.month], from: startMonth, to: targetMonth).month ?? 0
+            let startOffset = max(0, monthsBetween)
+            let remainder = startOffset % interval
+            var monthOffset = remainder == 0 ? startOffset : startOffset + (interval - remainder)
+            
+            while remainingCount > 0 {
+                guard let monthStartDate = calendar.date(byAdding: .month, value: monthOffset, to: startMonth) else {
+                    break
+                }
+                
+                if monthStartDate >= monthEnd {
+                    break
+                }
+                
+                if let until = rule.until, monthStartDate > until {
+                    break
+                }
+                
+                let monthRange = calendar.range(of: .day, in: .month, for: monthStartDate) ?? 1..<1
+                var candidateDays: [Int] = []
+                
+                if !byMonthDays.isEmpty {
+                    candidateDays = resolveMonthDays(byMonthDays, monthRange: monthRange)
+                } else if !byDayOrdinals.isEmpty {
+                    candidateDays = resolveOrdinalWeekdays(byDayOrdinals, in: monthStartDate, monthRange: monthRange)
+                } else if !byDays.isEmpty {
+                    candidateDays = resolveWeekdays(byDays, in: monthStartDate, monthRange: monthRange)
+                } else {
+                    candidateDays = [calendar.component(.day, from: startDate)].filter { monthRange.contains($0) }
+                }
+                
+                for day in candidateDays.sorted() {
+                    guard let occurrenceDay = calendar.date(byAdding: .day, value: day - 1, to: monthStartDate),
+                          let occurrenceStart = calendar.date(
+                            bySettingHour: timeComponents.hour ?? 0,
+                            minute: timeComponents.minute ?? 0,
+                            second: timeComponents.second ?? 0,
+                            of: occurrenceDay
+                          ) else {
+                        continue
+                    }
+                    
+                    addOccurrence(occurrenceStart)
+                    if remainingCount <= 0 {
+                        break
+                    }
+                }
+                
+                monthOffset += interval
+            }
+            
+        case "YEARLY":
+            let byMonths = rule.byMonths
+            let byMonthDays = rule.byMonthDays
+            let byDays = rule.byDays
+            let byDayOrdinals = rule.byDayOrdinals
+            
+            let startYear = calendar.dateInterval(of: .year, for: startDate)?.start ?? startDate
+            let targetYear = calendar.dateInterval(of: .year, for: monthStart)?.start ?? monthStart
+            let yearsBetween = calendar.dateComponents([.year], from: startYear, to: targetYear).year ?? 0
+            let startOffset = max(0, yearsBetween)
+            let remainder = startOffset % interval
+            var yearOffset = remainder == 0 ? startOffset : startOffset + (interval - remainder)
+            
+            while remainingCount > 0 {
+                guard let yearStart = calendar.date(byAdding: .year, value: yearOffset, to: startYear) else {
+                    break
+                }
+                
+                if yearStart >= monthEnd {
+                    break
+                }
+                
+                if let until = rule.until, yearStart > until {
+                    break
+                }
+                
+                let months = byMonths.isEmpty ? [calendar.component(.month, from: startDate)] : byMonths
+                
+                for month in months.sorted() {
+                    var components = calendar.dateComponents([.year], from: yearStart)
+                    components.month = month
+                    components.day = 1
+                    guard let monthStartDate = calendar.date(from: components) else { continue }
+                    let monthRange = calendar.range(of: .day, in: .month, for: monthStartDate) ?? 1..<1
+                    var candidateDays: [Int] = []
+                    
+                    if !byMonthDays.isEmpty {
+                        candidateDays = resolveMonthDays(byMonthDays, monthRange: monthRange)
+                    } else if !byDayOrdinals.isEmpty {
+                        candidateDays = resolveOrdinalWeekdays(byDayOrdinals, in: monthStartDate, monthRange: monthRange)
+                    } else if !byDays.isEmpty {
+                        candidateDays = resolveWeekdays(byDays, in: monthStartDate, monthRange: monthRange)
+                    } else {
+                        candidateDays = [calendar.component(.day, from: startDate)].filter { monthRange.contains($0) }
+                    }
+                    
+                    for day in candidateDays.sorted() {
+                        guard let occurrenceDay = calendar.date(byAdding: .day, value: day - 1, to: monthStartDate),
+                              let occurrenceStart = calendar.date(
+                                bySettingHour: timeComponents.hour ?? 0,
+                                minute: timeComponents.minute ?? 0,
+                                second: timeComponents.second ?? 0,
+                                of: occurrenceDay
+                              ) else {
+                            continue
+                        }
+                        
+                        addOccurrence(occurrenceStart)
+                        if remainingCount <= 0 {
+                            break
+                        }
+                    }
+                    
+                    if remainingCount <= 0 {
+                        break
+                    }
+                }
+                
+                yearOffset += interval
+            }
+            
+        default:
+            return [baseEvent]
+        }
+        
+        return occurrences.isEmpty ? [baseEvent] : occurrences
+    }
+    
+    private func occurrenceOverlaps(
+        occurrenceStart: Date,
+        occurrenceEnd: Date?,
+        monthStart: Date,
+        monthEnd: Date
+    ) -> Bool {
+        if let occurrenceEnd {
+            return occurrenceStart < monthEnd && occurrenceEnd > monthStart
+        }
+        
+        return occurrenceStart >= monthStart && occurrenceStart < monthEnd
+    }
+
+    private func eventOverlapsRange(_ event: CalendarEvent, start: Date, end: Date) -> Bool {
+        if let endDate = event.endDate {
+            return event.startDate < end && endDate > start
+        }
+        
+        return event.startDate >= start && event.startDate < end
+    }
+    
+    private func parseRRule(_ rrule: String) -> RecurrenceRule {
+        let parts = rrule.split(separator: ";")
+        var frequency: String?
+        var interval = 1
+        var byDays: [Int] = []
+        var byDayOrdinals: [(weekday: Int, ordinal: Int?)] = []
+        var byMonthDays: [Int] = []
+        var byMonths: [Int] = []
+        var count: Int?
+        var until: Date?
+        
+        for part in parts {
+            let components = part.split(separator: "=", maxSplits: 1)
+            guard components.count == 2 else { continue }
+            let key = components[0].uppercased()
+            let value = String(components[1])
+            
+            switch key {
+            case "FREQ":
+                frequency = value.uppercased()
+            case "INTERVAL":
+                interval = Int(value) ?? 1
+            case "BYDAY":
+                let entries = value.split(separator: ",")
+                for entry in entries {
+                    let token = String(entry)
+                    if let parsed = parseOrdinalWeekday(token) {
+                        byDayOrdinals.append(parsed)
+                        if parsed.ordinal == nil {
+                            byDays.append(parsed.weekday)
+                        }
+                    } else if let weekday = weekdayFromRRule(token) {
+                        byDays.append(weekday)
+                        byDayOrdinals.append((weekday: weekday, ordinal: nil))
+                    }
+                }
+            case "BYMONTHDAY":
+                byMonthDays = value
+                    .split(separator: ",")
+                    .compactMap { Int($0) }
+            case "BYMONTH":
+                byMonths = value
+                    .split(separator: ",")
+                    .compactMap { Int($0) }
+            case "COUNT":
+                count = Int(value)
+            case "UNTIL":
+                until = parseDate(from: value)
+            default:
+                break
+            }
+        }
+        
+        return RecurrenceRule(
+            frequency: frequency ?? "",
+            interval: interval,
+            byDays: byDays,
+            byDayOrdinals: byDayOrdinals,
+            byMonthDays: byMonthDays,
+            byMonths: byMonths,
+            count: count,
+            until: until
+        )
+    }
+    
+    private func weekdayFromRRule(_ value: String) -> Int? {
+        switch value.uppercased() {
+        case "SU": return 1
+        case "MO": return 2
+        case "TU": return 3
+        case "WE": return 4
+        case "TH": return 5
+        case "FR": return 6
+        case "SA": return 7
+        default: return nil
+        }
+    }
+    
+    private func parseOrdinalWeekday(_ value: String) -> (weekday: Int, ordinal: Int?)? {
+        let upper = value.uppercased()
+        let weekdayCode = String(upper.suffix(2))
+        guard let weekday = weekdayFromRRule(weekdayCode) else { return nil }
+        let prefix = String(upper.dropLast(2))
+        if prefix.isEmpty {
+            return (weekday: weekday, ordinal: nil)
+        }
+        if let ordinal = Int(prefix) {
+            return (weekday: weekday, ordinal: ordinal)
+        }
+        return nil
+    }
+    
+    private struct RecurrenceRule {
+        let frequency: String
+        let interval: Int
+        let byDays: [Int]
+        let byDayOrdinals: [(weekday: Int, ordinal: Int?)]
+        let byMonthDays: [Int]
+        let byMonths: [Int]
+        let count: Int?
+        let until: Date?
+    }
+
+    private func resolveMonthDays(_ byMonthDays: [Int], monthRange: Range<Int>) -> [Int] {
+        let lastDay = monthRange.count
+        var resolved: [Int] = []
+        for day in byMonthDays {
+            if day > 0 {
+                if monthRange.contains(day) {
+                    resolved.append(day)
+                }
+            } else if day < 0 {
+                let computed = lastDay + day + 1
+                if monthRange.contains(computed) {
+                    resolved.append(computed)
+                }
+            }
+        }
+        return resolved
+    }
+    
+    private func resolveWeekdays(_ byDays: [Int], in monthStartDate: Date, monthRange: Range<Int>) -> [Int] {
+        let calendar = Calendar.current
+        var days: [Int] = []
+        for day in monthRange {
+            guard let candidateDate = calendar.date(byAdding: .day, value: day - 1, to: monthStartDate) else { continue }
+            let weekday = calendar.component(.weekday, from: candidateDate)
+            if byDays.contains(weekday) {
+                days.append(day)
+            }
+        }
+        return days
+    }
+    
+    private func resolveOrdinalWeekdays(
+        _ ordinals: [(weekday: Int, ordinal: Int?)],
+        in monthStartDate: Date,
+        monthRange: Range<Int>
+    ) -> [Int] {
+        let calendar = Calendar.current
+        var days: [Int] = []
+        let lastDay = monthRange.count
+        
+        for entry in ordinals {
+            guard let ordinal = entry.ordinal else { continue }
+            let weekday = entry.weekday
+            if ordinal > 0 {
+                var count = 0
+                for day in monthRange {
+                    guard let candidateDate = calendar.date(byAdding: .day, value: day - 1, to: monthStartDate) else { continue }
+                    if calendar.component(.weekday, from: candidateDate) == weekday {
+                        count += 1
+                        if count == ordinal {
+                            days.append(day)
+                            break
+                        }
+                    }
+                }
+            } else if ordinal < 0 {
+                var count = 0
+                var day = lastDay
+                while day >= monthRange.lowerBound {
+                    guard let candidateDate = calendar.date(byAdding: .day, value: day - 1, to: monthStartDate) else {
+                        day -= 1
+                        continue
+                    }
+                    if calendar.component(.weekday, from: candidateDate) == weekday {
+                        count += 1
+                        if count == abs(ordinal) {
+                            days.append(day)
+                            break
+                        }
+                    }
+                    day -= 1
+                }
+            }
+        }
+        
+        return days.sorted()
     }
     
     private func cache(events: [CalendarEvent], monthKey: String) {
