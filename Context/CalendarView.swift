@@ -68,6 +68,19 @@ struct CalendarView: View {
         calendar.isDate(lhs, equalTo: rhs, toGranularity: .month)
     }
 
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, d MMMM"
+        return formatter.string(from: date)
+    }
+
+    private func headerColor(for date: Date) -> Color {
+        if Calendar.current.isDateInWeekend(date) {
+            return Color(red: 0.50, green: 0.60, blue: 0.78)
+        }
+        return .primary
+    }
+
     private func gridIndex(for date: Date) -> Int? {
         gridDates.firstIndex { candidate in
             guard let candidate else { return false }
@@ -120,23 +133,18 @@ struct CalendarView: View {
                         ForEach(gridDates.indices, id: \.self) { index in
                             if let date = gridDates[index] {
                                 let column = index % 7
-                                let isSelected = isSameDay(date, selectedDate)
-                                Button {
-                                    updateSelection(to: date)
-                                } label: {
-                                    Text("\(calendar.component(.day, from: date))")
-                                        .font(.title3.weight(.semibold))
-                                        .frame(maxWidth: .infinity, minHeight: 54)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .fill(isSelected ? Color.white.opacity(0.18) : Color.white.opacity(0.06))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundColor(isSelected ? .white : .primary)
-                                .focusable(true)
-                                .focused($focusedDay, equals: date)
-                                .onMoveCommand { direction in
+                                let isFocused = focusedDay.map { isSameDay(date, $0) } ?? false
+                                Text("\(calendar.component(.day, from: date))")
+                                    .font(.title3.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 54)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.06))
+                                    )
+                                    .foregroundColor(isFocused ? .white : .primary)
+                                    .focusable(true)
+                                    .focused($focusedDay, equals: date)
+                                    .onMoveCommand { direction in
                                     switch direction {
                                     case .left where isSameDay(date, monthInterval.start):
                                         if let previous = calendar.date(byAdding: .day, value: -1, to: date) {
@@ -173,7 +181,7 @@ struct CalendarView: View {
                                     default:
                                         break
                                     }
-                                }
+                                    }
                             } else {
                                 Color.clear
                                     .frame(maxWidth: .infinity, minHeight: 54)
@@ -186,8 +194,9 @@ struct CalendarView: View {
                 
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(selectedDate, style: .date)
-                            .font(.title3.weight(.semibold))
+                        Text(formatDate(selectedDate))
+                            .font(.headline)
+                            .foregroundColor(headerColor(for: selectedDate))
                         Spacer()
                     }
                     .frame(height: headerHeight + headerSpacing, alignment: .topLeading)
