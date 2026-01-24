@@ -120,7 +120,7 @@ struct TodayView: View {
             }
             
             group.addTask {
-                await calendarService.fetchCalendars()
+                await calendarService.fetchCalendars(for: Date())
             }
         }
     }

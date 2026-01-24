@@ -17,7 +17,11 @@ struct ContentView: View {
                     }
                 EventsView()
                     .tabItem {
-                        Label("Events", systemImage: "calendar")
+                        Label("Events", systemImage: "list.bullet")
+                    }
+                CalendarView()
+                    .tabItem {
+                        Label("Calendar", systemImage: "calendar")
                     }
             }
             

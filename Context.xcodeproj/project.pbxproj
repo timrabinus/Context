@@ -61,7 +61,7 @@
 			isa = PBXGroup;
 			children = (
 				5B959C212F1376760013A05D /* Context */,
-				5B959C451A2B3C4D0013A05D /* Context/ContextTests */,
+				5B959C451A2B3C4D0013A05D /* ContextTests */,
 				5B959C302F1376760013A05D /* Settings.bundle */,
 				5B959C461A2B3C4D0013A05D /* Frameworks */,
 				5B959C202F1376760013A05D /* Products */,

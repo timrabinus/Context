@@ -1,3 +1,258 @@
+//
+//  CalendarView.swift
+//  Context
+//
+//  Created by Martin on 24/01/2026.
+//
+
+import SwiftUI
+
+struct CalendarView: View {
+    @EnvironmentObject private var calendarService: CalendarService
+    @State private var selectedDate = Calendar.current.startOfDay(for: Date())
+    @FocusState private var focusedDay: Date?
+    @State private var headerHeight: CGFloat = 0
+    
+    private let headerSpacing: CGFloat = 18
+    
+    private var calendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2 // Monday
+        return calendar
+    }
+    
+    private var monthInterval: DateInterval {
+        calendar.dateInterval(of: .month, for: selectedDate) ?? DateInterval(start: selectedDate, end: selectedDate)
+    }
+
+    private var monthEndDate: Date {
+        calendar.date(byAdding: .day, value: -1, to: monthInterval.end) ?? monthInterval.end
+    }
+    
+    private var monthTitle: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL yyyy"
+        return formatter.string(from: selectedDate)
+    }
+    
+    private var weekdaySymbols: [String] {
+        let symbols = calendar.shortStandaloneWeekdaySymbols
+        let startIndex = calendar.firstWeekday - 1
+        return Array(symbols[startIndex...] + symbols[..<startIndex])
+    }
+    
+    private var gridDates: [Date?] {
+        let start = monthInterval.start
+        let range = calendar.range(of: .day, in: .month, for: start) ?? 1..<1
+        let firstWeekday = calendar.component(.weekday, from: start)
+        let leadingBlankCount = (firstWeekday - calendar.firstWeekday + 7) % 7
+        let days = range.compactMap { day -> Date? in
+            calendar.date(byAdding: .day, value: day - 1, to: start)
+        }
+        return Array(repeating: nil, count: leadingBlankCount) + days
+    }
+    
+    private var calendarColorMap: [String: Color] {
+        Dictionary(uniqueKeysWithValues: CalendarSource.predefinedCalendars.map { ($0.id, $0.color) })
+    }
+    
+    private func color(for calendarId: String) -> Color {
+        calendarColorMap[calendarId] ?? .gray
+    }
+    
+    private func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
+        calendar.isDate(lhs, inSameDayAs: rhs)
+    }
+    
+    private func isSameMonth(_ lhs: Date, _ rhs: Date) -> Bool {
+        calendar.isDate(lhs, equalTo: rhs, toGranularity: .month)
+    }
+
+    private func gridIndex(for date: Date) -> Int? {
+        gridDates.firstIndex { candidate in
+            guard let candidate else { return false }
+            return isSameDay(candidate, date)
+        }
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        if hour == 0 && minute == 0 {
+            return "All Day"
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+    
+    private func updateSelection(to date: Date) {
+        selectedDate = calendar.startOfDay(for: date)
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(alignment: .top, spacing: 40) {
+                VStack(alignment: .leading, spacing: headerSpacing) {
+                    VStack(alignment: .leading, spacing: headerSpacing) {
+                        Text(monthTitle)
+                            .font(.title2.weight(.semibold))
+                            .foregroundColor(.primary)
+                        
+                        HStack(spacing: 0) {
+                            ForEach(weekdaySymbols, id: \.self) { symbol in
+                                Text(symbol.uppercased())
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                    }
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: CalendarHeaderHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+                    
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 7)
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(gridDates.indices, id: \.self) { index in
+                            if let date = gridDates[index] {
+                                let column = index % 7
+                                let isSelected = isSameDay(date, selectedDate)
+                                Button {
+                                    updateSelection(to: date)
+                                } label: {
+                                    Text("\(calendar.component(.day, from: date))")
+                                        .font(.title3.weight(.semibold))
+                                        .frame(maxWidth: .infinity, minHeight: 54)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .fill(isSelected ? Color.white.opacity(0.18) : Color.white.opacity(0.06))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(isSelected ? .white : .primary)
+                                .focusable(true)
+                                .focused($focusedDay, equals: date)
+                                .onMoveCommand { direction in
+                                    switch direction {
+                                    case .left where isSameDay(date, monthInterval.start):
+                                        if let previous = calendar.date(byAdding: .day, value: -1, to: date) {
+                                            updateSelection(to: previous)
+                                            focusedDay = calendar.startOfDay(for: previous)
+                                        }
+                                    case .right where isSameDay(date, monthEndDate):
+                                        if let next = calendar.date(byAdding: .day, value: 1, to: date) {
+                                            updateSelection(to: next)
+                                            focusedDay = calendar.startOfDay(for: next)
+                                        }
+                                    case .left where column == 0:
+                                        if let previous = calendar.date(byAdding: .day, value: -1, to: date) {
+                                            updateSelection(to: previous)
+                                            focusedDay = calendar.startOfDay(for: previous)
+                                        }
+                                    case .right where column == 6:
+                                        if let next = calendar.date(byAdding: .day, value: 1, to: date) {
+                                            updateSelection(to: next)
+                                            focusedDay = calendar.startOfDay(for: next)
+                                        }
+                                    case .up:
+                                        if let previousWeek = calendar.date(byAdding: .day, value: -7, to: date),
+                                           !isSameMonth(previousWeek, date) {
+                                            updateSelection(to: previousWeek)
+                                            focusedDay = calendar.startOfDay(for: previousWeek)
+                                        }
+                                    case .down:
+                                        if let nextWeek = calendar.date(byAdding: .day, value: 7, to: date),
+                                           !isSameMonth(nextWeek, date) {
+                                            updateSelection(to: nextWeek)
+                                            focusedDay = calendar.startOfDay(for: nextWeek)
+                                        }
+                                    default:
+                                        break
+                                    }
+                                }
+                            } else {
+                                Color.clear
+                                    .frame(maxWidth: .infinity, minHeight: 54)
+                                    .focusable(false)
+                            }
+                        }
+                    }
+                }
+                .frame(width: geometry.size.width * 0.55, alignment: .topLeading)
+                
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(selectedDate, style: .date)
+                            .font(.title3.weight(.semibold))
+                        Spacer()
+                    }
+                    .frame(height: headerHeight + headerSpacing, alignment: .topLeading)
+                    
+                    let dayEvents = calendarService.eventsForDay(selectedDate)
+                    if dayEvents.isEmpty && calendarService.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    } else if let error = calendarService.error, dayEvents.isEmpty {
+                        Text("Error: \(error)")
+                            .foregroundColor(.red)
+                    } else if dayEvents.isEmpty {
+                        Text("No events")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(dayEvents) { event in
+                                    EventListRowView(
+                                        event: event,
+                                        calendarColor: color(for: event.calendarId),
+                                        timeText: calendarService.displayTime(for: event, on: selectedDate)
+                                    )
+                                    .padding(.horizontal, 6)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(width: geometry.size.width * 0.35, alignment: .topLeading)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 30)
+            .padding(.bottom, 20)
+            .onPreferenceChange(CalendarHeaderHeightKey.self) { value in
+                headerHeight = value
+            }
+            .onChange(of: focusedDay) { newValue in
+                if let newValue {
+                    updateSelection(to: newValue)
+                }
+            }
+            .onChange(of: selectedDate) { newValue in
+                calendarService.refreshIfNeeded(for: newValue)
+            }
+            .task {
+                calendarService.refreshIfNeeded(for: selectedDate)
+                focusedDay = calendar.startOfDay(for: selectedDate)
+            }
+        }
+    }
+}
+
+#Preview {
+    CalendarView()
+        .environmentObject(CalendarService())
+}
+
+private struct CalendarHeaderHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
 import SwiftUI
 
 struct CalendarLineView: View {

@@ -11,18 +11,30 @@ import Combine
 @MainActor
 class CalendarService: ObservableObject {
     @Published var events: [CalendarEvent] = []
+    @Published private(set) var cachedEventsByDay: [String: [CalendarEvent]] = [:]
     @Published var isLoading = false
     @Published var error: String?
     
     private let calendars: [CalendarSource]
+    private var cachedMonthKey: String?
+    private var isRefreshing = false
+    private let cacheKey = "calendarEventCache.v1"
     
     init(calendars: [CalendarSource]? = nil) {
         self.calendars = calendars ?? CalendarSource.predefinedCalendars
+        loadCache()
     }
     
-    func fetchCalendars() async {
+    func fetchCalendars(for date: Date = Date()) async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
         isLoading = true
         error = nil
+        
+        defer {
+            isRefreshing = false
+            isLoading = false
+        }
         
         var allEvents: [CalendarEvent] = []
         var errors: [String] = []
@@ -46,17 +58,39 @@ class CalendarService: ObservableObject {
         
         // Sort all events by date
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let futureDate = calendar.date(byAdding: .day, value: 14, to: today) ?? today
-        events = allEvents
-            .filter { $0.startDate >= today && $0.startDate <= futureDate }
+        let monthInterval = calendar.dateInterval(of: .month, for: date)
+        let monthStart = monthInterval?.start ?? date
+        let monthEnd = monthInterval?.end ?? date
+        let monthEvents = allEvents
+            .filter { $0.startDate >= monthStart && $0.startDate < monthEnd }
             .sorted { $0.startDate < $1.startDate }
+        
+        events = monthEvents
+        cache(events: monthEvents, monthKey: monthKey(for: date))
         
         if !errors.isEmpty && events.isEmpty {
             error = errors.joined(separator: "; ")
         }
+    }
+    
+    func eventsForDay(_ date: Date) -> [CalendarEvent] {
+        let key = dayKey(for: date)
+        if let cached = cachedEventsByDay[key] {
+            return cached
+        }
         
-        isLoading = false
+        return events
+            .filter { eventOccurs($0, on: date) }
+            .sorted { eventSort($0, $1, on: date) }
+    }
+    
+    func refreshIfNeeded(for date: Date) {
+        let key = monthKey(for: date)
+        guard cachedMonthKey != key else { return }
+        guard !isRefreshing else { return }
+        Task {
+            await fetchCalendars(for: date)
+        }
     }
     
     private func fetchCalendar(calendar: CalendarSource) async -> [CalendarEvent]? {
@@ -270,5 +304,204 @@ class CalendarService: ObservableObject {
         
         // Fallback to current date
         return Date()
+    }
+    
+    private func cache(events: [CalendarEvent], monthKey: String) {
+        var grouped: [String: [CalendarEvent]] = [:]
+        for event in events {
+            for day in coveredDays(for: event) {
+                let key = dayKey(for: day)
+                grouped[key, default: []].append(event)
+            }
+        }
+        
+        for (key, value) in grouped {
+            if let day = Self.dayKeyFormatter.date(from: key) {
+                grouped[key] = value.sorted { eventSort($0, $1, on: day) }
+            } else {
+                grouped[key] = value.sorted { $0.startDate < $1.startDate }
+            }
+        }
+        
+        cachedEventsByDay = grouped
+        cachedMonthKey = monthKey
+        
+        let cache = CalendarEventCache(monthKey: monthKey, eventsByDay: grouped)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        
+        if let data = try? encoder.encode(cache) {
+            UserDefaults.standard.set(data, forKey: cacheKey)
+        }
+    }
+    
+    private func loadCache() {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey) else {
+            return
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        guard let cache = try? decoder.decode(CalendarEventCache.self, from: data) else {
+            return
+        }
+        
+        let currentMonthKey = monthKey(for: Date())
+        guard cache.monthKey == currentMonthKey else {
+            return
+        }
+        
+        cachedEventsByDay = cache.eventsByDay
+        cachedMonthKey = cache.monthKey
+        events = cache.eventsByDay.values
+            .flatMap { $0 }
+            .sorted { $0.startDate < $1.startDate }
+    }
+    
+    private func dayKey(for date: Date) -> String {
+        Self.dayKeyFormatter.string(from: date)
+    }
+    
+    private func monthKey(for date: Date) -> String {
+        Self.monthKeyFormatter.string(from: date)
+    }
+    
+    private struct CalendarEventCache: Codable {
+        let monthKey: String
+        let eventsByDay: [String: [CalendarEvent]]
+    }
+    
+    private static let dayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+    
+    private static let monthKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }()
+    
+    private func eventOccurs(_ event: CalendarEvent, on date: Date) -> Bool {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        
+        if let endDate = event.endDate {
+            return event.startDate < nextDay && endDate > dayStart
+        }
+        
+        return calendar.isDate(event.startDate, inSameDayAs: date)
+    }
+    
+    private func coveredDays(for event: CalendarEvent) -> [Date] {
+        let calendar = Calendar.current
+        let startDay = calendar.startOfDay(for: event.startDate)
+        
+        guard let endDate = event.endDate else {
+            return [startDay]
+        }
+        
+        let endDay = calendar.startOfDay(for: endDate)
+        let lastIncludedDay: Date
+        
+        if endDate == endDay {
+            lastIncludedDay = calendar.date(byAdding: .day, value: -1, to: endDay) ?? startDay
+        } else {
+            lastIncludedDay = endDay
+        }
+        
+        if lastIncludedDay < startDay {
+            return [startDay]
+        }
+        
+        var days: [Date] = []
+        var current = startDay
+        while current <= lastIncludedDay {
+            days.append(current)
+            current = calendar.date(byAdding: .day, value: 1, to: current) ?? current
+            if current == days.last {
+                break
+            }
+        }
+        
+        return days
+    }
+
+    private func eventSort(_ lhs: CalendarEvent, _ rhs: CalendarEvent, on date: Date) -> Bool {
+        let lhsTiming = timingForDisplay(lhs, on: date)
+        let rhsTiming = timingForDisplay(rhs, on: date)
+        
+        if lhsTiming.isAllDay != rhsTiming.isAllDay {
+            return lhsTiming.isAllDay
+        }
+        
+        if lhsTiming.time != rhsTiming.time {
+            return lhsTiming.time < rhsTiming.time
+        }
+        
+        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+    
+    private func isAllDay(_ event: CalendarEvent) -> Bool {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.hour, .minute], from: event.startDate)
+        return (components.hour ?? 0) == 0 && (components.minute ?? 0) == 0
+    }
+
+    private func timingForDisplay(_ event: CalendarEvent, on date: Date) -> (isAllDay: Bool, time: Date) {
+        if isAllDay(event) {
+            return (true, event.startDate)
+        }
+        
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        
+        guard let endDate = event.endDate else {
+            return (false, event.startDate)
+        }
+        
+        let startDay = calendar.startOfDay(for: event.startDate)
+        let endDay = calendar.startOfDay(for: endDate)
+        let lastIncludedDay: Date
+        
+        if endDate == endDay {
+            lastIncludedDay = calendar.date(byAdding: .day, value: -1, to: endDay) ?? startDay
+        } else {
+            lastIncludedDay = endDay
+        }
+        
+        if dayStart > startDay && dayStart < lastIncludedDay {
+            return (true, event.startDate)
+        }
+        
+        if calendar.isDate(event.startDate, inSameDayAs: date) {
+            return (false, event.startDate)
+        }
+        
+        if calendar.isDate(endDate, inSameDayAs: date) {
+            return (false, endDate)
+        }
+        
+        return (false, event.startDate)
+    }
+    
+    func displayTime(for event: CalendarEvent, on date: Date) -> String {
+        let timing = timingForDisplay(event, on: date)
+        if timing.isAllDay {
+            return "All Day"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: timing.time)
     }
 }

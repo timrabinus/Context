@@ -27,7 +27,7 @@ struct ContextApp: App {
             ContentView()
                 .environmentObject(calendarService)
                 .task {
-                    await calendarService.fetchCalendars()
+                    await calendarService.fetchCalendars(for: Date())
                 }
         }
     }

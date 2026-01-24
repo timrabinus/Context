@@ -31,7 +31,9 @@ struct EventsView: View {
     
     private var groupedEvents: [(date: Date, events: [CalendarEvent])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: calendarService.events) { event in
+        let today = calendar.startOfDay(for: Date())
+        let upcomingEvents = calendarService.events.filter { $0.startDate >= today }
+        let grouped = Dictionary(grouping: upcomingEvents) { event in
             calendar.startOfDay(for: event.startDate)
         }
         
@@ -91,13 +93,12 @@ struct EventsView: View {
                                     .padding(.top, 8)
                                     .padding(.bottom, 12)) {
                                     ForEach(dateGroup.events) { event in
-                                        EventRowView(
+                                        let timeText = calendarService.displayTime(for: event, on: dateGroup.date)
+                                        EventListRowView(
                                             event: event,
                                             calendarColor: color(for: event.calendarId),
-                                            formatTime: formatTime,
-                                            onSelect: {
-                                                selectedEvent = event
-                                            }
+                                            timeText: timeText,
+                                            onSelect: { selectedEvent = event }
                                         )
                                         .focused($focusedEventId, equals: event.id)
                                     }

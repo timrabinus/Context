@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct CalendarEvent: Identifiable, Equatable {
+struct CalendarEvent: Identifiable, Equatable, Codable {
     let id: String
     let calendarId: String
     let title: String

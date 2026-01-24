@@ -10,7 +10,7 @@ import SwiftUI
 struct EventListView: View {
     let groupedEvents: [(date: Date, events: [CalendarEvent])]
     let formatDate: (Date) -> String
-    let formatTime: (Date) -> String
+    let timeText: (CalendarEvent) -> String
     let colorForCalendar: (String) -> Color
     let onEventSelect: (CalendarEvent) -> Void
     
@@ -24,10 +24,10 @@ struct EventListView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 12)) {
                     ForEach(dateGroup.events) { event in
-                        EventRowView(
+                        EventListRowView(
                             event: event,
                             calendarColor: colorForCalendar(event.calendarId),
-                            formatTime: formatTime,
+                            timeText: timeText(event),
                             onSelect: {
                                 onEventSelect(event)
                             }
@@ -61,11 +61,7 @@ struct EventListView: View {
             formatter.dateStyle = .full
             return formatter.string(from: date)
         },
-        formatTime: { date in
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: date)
-        },
+        timeText: { _ in "09:00" },
         colorForCalendar: { _ in .blue },
         onEventSelect: { _ in }
     )
